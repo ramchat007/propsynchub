@@ -1,5 +1,9 @@
 'use server';
 
+if (process.env.NODE_ENV !== 'production') {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
+
 import { createAdminClient } from '@/lib/supabase';
 import { createServerSupabaseClient } from '@/lib/supabase-server';
 
@@ -139,6 +143,17 @@ export async function verifyMobileOtp(
 
     const hasTenant = Boolean(profile?.tenant_id);
     const defaultRedirect = hasTenant ? '/dashboard' : '/onboarding';
+
+    // 4. Establish authenticated session cookies directly on the server
+    try {
+      const serverSupabase = await createServerSupabaseClient();
+      await serverSupabase.auth.signInWithPassword({
+        email: internalEmail,
+        password: internalPassword,
+      });
+    } catch (serverSignErr) {
+      console.warn('[Server Auth] Session cookie write warning:', serverSignErr);
+    }
 
     return {
       success: true,

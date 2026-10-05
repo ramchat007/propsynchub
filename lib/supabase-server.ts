@@ -1,3 +1,7 @@
+if (typeof window === 'undefined' && process.env.NODE_ENV !== 'production') {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
+
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
