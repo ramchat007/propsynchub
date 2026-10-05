@@ -1,0 +1,2 @@
+export const PREDEFINED_TEST_OTP = '123456';
+export const DEFAULT_TEST_PHONE = '9820160376';

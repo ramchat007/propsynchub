@@ -1,0 +1,822 @@
+'use client';
+
+import React, { useState, useTransition } from 'react';
+import { Room, RoomCategory, Pricing, Tenant } from '@/types';
+import {
+  addRoomCategory,
+  addRoom,
+  updateRoomStatus,
+  updateRoomPricing,
+  initializeDemoResort,
+} from '@/app/actions/inventory';
+import { ToastContainer, ToastMessage } from './Toast';
+
+interface InventoryDashboardClientProps {
+  tenant: Tenant | null;
+  initialCategories: RoomCategory[];
+  initialRooms: Room[];
+  initialPricing: Pricing[];
+  userRole?: string;
+}
+
+export default function InventoryDashboardClient({
+  tenant,
+  initialCategories,
+  initialRooms,
+  initialPricing,
+  userRole = 'tenant_admin',
+}: InventoryDashboardClientProps) {
+  // Navigation & Filter state
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Modals state
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
+  const [preselectedCategory, setPreselectedCategory] = useState<string>('');
+
+  // Edit Pricing Modal state
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [editBasePrice, setEditBasePrice] = useState<string>('');
+  const [editExtraPaxPrice, setEditExtraPaxPrice] = useState<string>('');
+
+  // Transitions for Server Actions
+  const [isPending, startTransition] = useTransition();
+  const [pendingActionId, setPendingActionId] = useState<string | null>(null);
+
+  // Toast notifications
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  function addToast(type: 'success' | 'error' | 'info', message: string) {
+    const id = Math.random().toString(36).slice(2, 9);
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  }
+
+  function removeToast(id: string) {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }
+
+  // Active tenant ID fallback
+  const tenantId = tenant?.id || '';
+
+  // Stats calculations
+  const totalRooms = initialRooms.length;
+  const availableRooms = initialRooms.filter((r) => r.status === 'available').length;
+  const maintenanceRooms = initialRooms.filter((r) => r.status === 'maintenance').length;
+  const blockedRooms = initialRooms.filter((r) => r.status === 'blocked').length;
+
+  // Filtered rooms
+  const filteredRooms = initialRooms.filter((room) => {
+    const matchesStatus =
+      selectedStatusFilter === 'all' ? true : room.status === selectedStatusFilter;
+    const matchesSearch =
+      room.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (room.room_number && room.room_number.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      room.room_type.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesStatus && matchesSearch;
+  });
+
+  // Group rooms by category/type
+  const categoriesMap: { [key: string]: { category?: RoomCategory; rooms: Room[] } } = {};
+
+  // Register known categories
+  initialCategories.forEach((cat) => {
+    categoriesMap[cat.name] = { category: cat, rooms: [] };
+  });
+
+  // Distribute rooms into categories
+  filteredRooms.forEach((room) => {
+    const groupKey = room.room_type || 'Standard';
+    if (!categoriesMap[groupKey]) {
+      categoriesMap[groupKey] = { rooms: [] };
+    }
+    categoriesMap[groupKey].rooms.push(room);
+  });
+
+  // Handle Quick Room Status Toggle
+  function handleStatusChange(room: Room, newStatus: 'available' | 'maintenance' | 'blocked') {
+    if (room.status === newStatus) return;
+
+    setPendingActionId(`status-${room.id}`);
+    startTransition(async () => {
+      const res = await updateRoomStatus(room.id, room.tenant_id, newStatus);
+      setPendingActionId(null);
+      if (res.success) {
+        addToast('success', `${room.name} marked as ${newStatus}`);
+      } else {
+        addToast('error', res.error || 'Failed to update room status');
+      }
+    });
+  }
+
+  // Handle Add Category Submission
+  function handleCreateCategory(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    formData.set('tenantId', tenantId);
+
+    setPendingActionId('add-category');
+    startTransition(async () => {
+      const res = await addRoomCategory(formData);
+      setPendingActionId(null);
+      if (res.success) {
+        addToast('success', res.message || 'Room category added.');
+        setIsCategoryModalOpen(false);
+      } else {
+        addToast('error', res.error || 'Failed to add room category.');
+      }
+    });
+  }
+
+  // Handle Add Room Submission
+  function handleCreateRoom(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    formData.set('tenantId', tenantId);
+
+    setPendingActionId('add-room');
+    startTransition(async () => {
+      const res = await addRoom(formData);
+      setPendingActionId(null);
+      if (res.success) {
+        addToast('success', res.message || 'Room created.');
+        setIsRoomModalOpen(false);
+      } else {
+        addToast('error', res.error || 'Failed to add room.');
+      }
+    });
+  }
+
+  // Handle Update Pricing Submission
+  function handleSavePricing(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!editingRoom) return;
+
+    const base = parseFloat(editBasePrice);
+    const extraPax = editExtraPaxPrice ? parseFloat(editExtraPaxPrice) : undefined;
+
+    setPendingActionId(`pricing-${editingRoom.id}`);
+    startTransition(async () => {
+      const res = await updateRoomPricing(
+        editingRoom.id,
+        editingRoom.tenant_id,
+        base,
+        extraPax
+      );
+      setPendingActionId(null);
+      if (res.success) {
+        addToast('success', res.message || 'Pricing updated.');
+        setEditingRoom(null);
+      } else {
+        addToast('error', res.error || 'Failed to update pricing.');
+      }
+    });
+  }
+
+  // Handle Seeding Starter Demo Resort if empty
+  function handleSeedDemo() {
+    setPendingActionId('seed-demo');
+    startTransition(async () => {
+      const res = await initializeDemoResort();
+      setPendingActionId(null);
+      if (res.success) {
+        addToast('success', 'Demo resort inventory generated successfully!');
+      } else {
+        addToast('error', res.error || 'Failed to initialize demo resort.');
+      }
+    });
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* Toast Notification Container */}
+      <ToastContainer toasts={toasts} onDismiss={removeToast} />
+
+      {/* Top Header & Property Details */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-neutral-200 pb-6 dark:border-neutral-800">
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
+              {tenant?.name || 'Resort Inventory & Rooms'}
+            </h1>
+            <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
+              {userRole.toUpperCase()}
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-neutral-500">
+            {tenant?.subdomain
+              ? `Subdomain: ${tenant.subdomain}.propsynchub.com`
+              : 'Multi-tenant property inventory management'}
+          </p>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setIsCategoryModalOpen(true)}
+            className="inline-flex items-center rounded-xl border border-neutral-300 bg-white px-3.5 py-2 text-xs font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-750"
+          >
+            + New Category
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setPreselectedCategory(initialCategories[0]?.name || '');
+              setIsRoomModalOpen(true);
+            }}
+            className="inline-flex items-center rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-500 focus:outline-none"
+          >
+            + Add Room
+          </button>
+        </div>
+      </div>
+
+      {/* Metrics Summary Cards */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-xs dark:border-neutral-800 dark:bg-neutral-900">
+          <p className="text-xs font-medium text-neutral-500">Total Rooms</p>
+          <p className="mt-2 text-3xl font-extrabold text-neutral-900 dark:text-neutral-100">
+            {totalRooms}
+          </p>
+          <p className="mt-1 text-xs text-neutral-400">
+            {Object.keys(categoriesMap).length} Categories · {initialPricing.length} Rate Rules
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-5 shadow-xs dark:border-emerald-950 dark:bg-emerald-950/20">
+          <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-400">Available</p>
+          <p className="mt-2 text-3xl font-extrabold text-emerald-700 dark:text-emerald-300">
+            {availableRooms}
+          </p>
+          <p className="mt-1 text-xs text-emerald-600/70">Ready for guest check-in</p>
+        </div>
+
+        <div className="rounded-2xl border border-amber-100 bg-amber-50/40 p-5 shadow-xs dark:border-amber-950 dark:bg-amber-950/20">
+          <p className="text-xs font-semibold text-amber-800 dark:text-amber-400">Maintenance</p>
+          <p className="mt-2 text-3xl font-extrabold text-amber-700 dark:text-amber-300">
+            {maintenanceRooms}
+          </p>
+          <p className="mt-1 text-xs text-amber-600/70">Housekeeping or repairs</p>
+        </div>
+
+        <div className="rounded-2xl border border-rose-100 bg-rose-50/40 p-5 shadow-xs dark:border-rose-950 dark:bg-rose-950/20">
+          <p className="text-xs font-semibold text-rose-800 dark:text-rose-400">Blocked</p>
+          <p className="mt-2 text-3xl font-extrabold text-rose-700 dark:text-rose-300">
+            {blockedRooms}
+          </p>
+          <p className="mt-1 text-xs text-rose-600/70">Off-market / reserved</p>
+        </div>
+      </div>
+
+      {/* Search and Filters Bar */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="relative flex-1">
+          <input
+            type="text"
+            placeholder="Search room name, number, or category..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3.5 py-2 text-xs text-neutral-900 placeholder-neutral-400 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+          />
+        </div>
+
+        {/* Status Filters */}
+        <div className="flex items-center gap-1.5 overflow-x-auto">
+          {['all', 'available', 'maintenance', 'blocked'].map((status) => (
+            <button
+              key={status}
+              onClick={() => setSelectedStatusFilter(status)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold capitalize transition ${
+                selectedStatusFilter === status
+                  ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                  : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'
+              }`}
+            >
+              {status}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Empty State Handler */}
+      {totalRooms === 0 && (
+        <div className="rounded-2xl border-2 border-dashed border-neutral-200 p-12 text-center dark:border-neutral-800">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400">
+            <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5" />
+            </svg>
+          </div>
+          <h3 className="mt-4 text-base font-semibold text-neutral-900 dark:text-neutral-100">
+            No rooms in inventory yet
+          </h3>
+          <p className="mt-1 text-xs text-neutral-500 max-w-sm mx-auto">
+            Get started by adding your first room category and units, or initialize starter demo rooms.
+          </p>
+          <div className="mt-6 flex justify-center gap-3">
+            <button
+              type="button"
+              onClick={handleSeedDemo}
+              disabled={isPending && pendingActionId === 'seed-demo'}
+              className="inline-flex items-center rounded-xl bg-neutral-900 px-4 py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200 disabled:opacity-50"
+            >
+              {isPending && pendingActionId === 'seed-demo' ? 'Generating...' : 'Seed Sample Inventory'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsCategoryModalOpen(true)}
+              className="inline-flex items-center rounded-xl border border-neutral-300 bg-white px-4 py-2.5 text-xs font-semibold text-neutral-700 shadow-xs hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
+            >
+              + Create Category
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Inventory Grouped by Category */}
+      {Object.entries(categoriesMap).map(([categoryName, group]) => {
+        const catInfo = group.category;
+        const roomsInGroup = group.rooms;
+
+        return (
+          <div
+            key={categoryName}
+            className="overflow-hidden rounded-2xl border border-neutral-200/90 bg-white shadow-xs dark:border-neutral-800 dark:bg-neutral-900"
+          >
+            {/* Category Header */}
+            <div className="flex flex-col gap-2 border-b border-neutral-200 bg-neutral-50/60 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-neutral-800 dark:bg-neutral-850/40">
+              <div className="flex items-center gap-3">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-600/10 font-bold text-xs text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400">
+                  {categoryName.charAt(0)}
+                </span>
+                <div>
+                  <h2 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
+                    {categoryName}
+                  </h2>
+                  <p className="text-[11px] text-neutral-500">
+                    {catInfo?.description || `${roomsInGroup.length} room units registered`}
+                  </p>
+                </div>
+              </div>
+
+              {/* Pricing & Capacity Header summary */}
+              <div className="flex items-center gap-4 text-xs">
+                {catInfo && (
+                  <div className="flex items-center gap-3 text-neutral-600 dark:text-neutral-400">
+                    <span>
+                      Base:{' '}
+                      <strong className="text-neutral-900 dark:text-neutral-100">
+                        ₹{catInfo.base_price_inr.toLocaleString()}
+                      </strong>
+                    </span>
+                    {catInfo.extra_pax_price_inr > 0 && (
+                      <span>
+                        Extra Pax:{' '}
+                        <strong className="text-neutral-900 dark:text-neutral-100">
+                          +₹{catInfo.extra_pax_price_inr.toLocaleString()}
+                        </strong>
+                      </span>
+                    )}
+                    <span className="hidden sm:inline-block">
+                      Max: {catInfo.max_adults} Adults
+                      {catInfo.max_children > 0 ? `, ${catInfo.max_children} Kids` : ''}
+                    </span>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreselectedCategory(categoryName);
+                    setIsRoomModalOpen(true);
+                  }}
+                  className="rounded-lg border border-neutral-300 bg-white px-2.5 py-1 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
+                >
+                  + Add Unit
+                </button>
+              </div>
+            </div>
+
+            {/* Rooms Table */}
+            {roomsInGroup.length === 0 ? (
+              <div className="p-6 text-center text-xs text-neutral-400">
+                No rooms matching the filter in this category.
+              </div>
+            ) : (
+              <div className="divide-y divide-neutral-100 dark:divide-neutral-800/60">
+                {roomsInGroup.map((room) => {
+                  const isUpdatingStatus =
+                    isPending && pendingActionId === `status-${room.id}`;
+                  const isUpdatingPricing =
+                    isPending && pendingActionId === `pricing-${room.id}`;
+
+                  return (
+                    <div
+                      key={room.id}
+                      className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between hover:bg-neutral-50/50 dark:hover:bg-neutral-850/30 transition"
+                    >
+                      {/* Room Identifiers */}
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-100 font-bold text-xs text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+                          {room.room_number || '#'}
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                            {room.name}
+                          </p>
+                          <p className="text-xs text-neutral-400">
+                            Capacity: {room.capacity_adults} Adults
+                            {room.capacity_children > 0
+                              ? `, ${room.capacity_children} Children`
+                              : ''}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Pricing and Status Controls */}
+                      <div className="flex flex-wrap items-center gap-3 sm:gap-6">
+                        {/* Current Pricing */}
+                        <div className="text-right">
+                          <p className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
+                            ₹{room.base_price_inr.toLocaleString()}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingRoom(room);
+                              setEditBasePrice(room.base_price_inr.toString());
+                              setEditExtraPaxPrice(
+                                catInfo?.extra_pax_price_inr?.toString() || '1000'
+                              );
+                            }}
+                            disabled={isUpdatingPricing}
+                            className="text-[11px] font-medium text-emerald-600 hover:underline dark:text-emerald-400"
+                          >
+                            {isUpdatingPricing ? 'Saving...' : 'Edit Price'}
+                          </button>
+                        </div>
+
+                        {/* Status Toggle Switcher */}
+                        <div className="flex items-center gap-1.5">
+                          {(['available', 'maintenance', 'blocked'] as const).map(
+                            (statusVal) => {
+                              const isActive = room.status === statusVal;
+                              return (
+                                <button
+                                  key={statusVal}
+                                  type="button"
+                                  onClick={() => handleStatusChange(room, statusVal)}
+                                  disabled={isUpdatingStatus}
+                                  className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold capitalize transition ${
+                                    isActive
+                                      ? statusVal === 'available'
+                                        ? 'bg-emerald-600 text-white'
+                                        : statusVal === 'maintenance'
+                                        ? 'bg-amber-600 text-white'
+                                        : 'bg-rose-600 text-white'
+                                      : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'
+                                  } disabled:opacity-50`}
+                                >
+                                  {isUpdatingStatus && isActive ? '...' : statusVal}
+                                </button>
+                              );
+                            }
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* ===================================================================== */}
+      {/* MODAL 1: ADD ROOM CATEGORY */}
+      {/* ===================================================================== */}
+      {isCategoryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
+              <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+                Add Room Category
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsCategoryModalOpen(false)}
+                className="text-neutral-400 hover:text-neutral-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCategory} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                  Category Name *
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  required
+                  placeholder="e.g. Ocean View Suite"
+                  className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                  Description
+                </label>
+                <textarea
+                  name="description"
+                  rows={2}
+                  placeholder="Private balcony with king bed and sea view"
+                  className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    Base Rate (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    name="basePrice"
+                    min="0"
+                    step="100"
+                    required
+                    defaultValue="5000"
+                    className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    Extra Pax Rate (₹)
+                  </label>
+                  <input
+                    type="number"
+                    name="extraPaxPrice"
+                    min="0"
+                    step="100"
+                    defaultValue="1000"
+                    className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    Max Adults
+                  </label>
+                  <input
+                    type="number"
+                    name="maxAdults"
+                    min="1"
+                    defaultValue="2"
+                    className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    Max Children
+                  </label>
+                  <input
+                    type="number"
+                    name="maxChildren"
+                    min="0"
+                    defaultValue="1"
+                    className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end gap-2 border-t border-neutral-100 pt-4 dark:border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setIsCategoryModalOpen(false)}
+                  className="rounded-xl border border-neutral-300 px-3.5 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isPending && pendingActionId === 'add-category'}
+                  className="inline-flex items-center rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-emerald-500 disabled:opacity-50"
+                >
+                  {isPending && pendingActionId === 'add-category'
+                    ? 'Creating...'
+                    : 'Save Category'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL 2: ADD ROOM TO CATEGORY */}
+      {/* ===================================================================== */}
+      {isRoomModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
+              <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+                Add Room Unit
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsRoomModalOpen(false)}
+                className="text-neutral-400 hover:text-neutral-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateRoom} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                  Room Name *
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  required
+                  placeholder="e.g. Sunset Villa 101"
+                  className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    Room Number
+                  </label>
+                  <input
+                    type="text"
+                    name="roomNumber"
+                    placeholder="101"
+                    className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    Category *
+                  </label>
+                  <input
+                    type="text"
+                    name="roomType"
+                    required
+                    defaultValue={preselectedCategory || initialCategories[0]?.name || 'Standard'}
+                    placeholder="Category name"
+                    className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    Base Rate (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    name="basePrice"
+                    min="0"
+                    step="100"
+                    required
+                    defaultValue="5000"
+                    className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    Adults
+                  </label>
+                  <input
+                    type="number"
+                    name="capacityAdults"
+                    min="1"
+                    defaultValue="2"
+                    className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    Children
+                  </label>
+                  <input
+                    type="number"
+                    name="capacityChildren"
+                    min="0"
+                    defaultValue="0"
+                    className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end gap-2 border-t border-neutral-100 pt-4 dark:border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setIsRoomModalOpen(false)}
+                  className="rounded-xl border border-neutral-300 px-3.5 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isPending && pendingActionId === 'add-room'}
+                  className="inline-flex items-center rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-emerald-500 disabled:opacity-50"
+                >
+                  {isPending && pendingActionId === 'add-room' ? 'Adding...' : 'Add Room'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL 3: EDIT PRICING */}
+      {/* ===================================================================== */}
+      {editingRoom && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-sm rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
+              <div>
+                <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+                  Update Pricing
+                </h3>
+                <p className="text-xs text-neutral-500">{editingRoom.name}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingRoom(null)}
+                className="text-neutral-400 hover:text-neutral-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePricing} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                  Base Price (₹) *
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="50"
+                  required
+                  value={editBasePrice}
+                  onChange={(e) => setEditBasePrice(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-sm font-bold text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                  Extra Pax Surcharge (₹)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="50"
+                  value={editExtraPaxPrice}
+                  onChange={(e) => setEditExtraPaxPrice(e.target.value)}
+                  placeholder="1000"
+                  className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-sm text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                />
+              </div>
+
+              <div className="mt-6 flex justify-end gap-2 border-t border-neutral-100 pt-4 dark:border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingRoom(null)}
+                  className="rounded-xl border border-neutral-300 px-3.5 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isPending && pendingActionId === `pricing-${editingRoom.id}`}
+                  className="inline-flex items-center rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-emerald-500 disabled:opacity-50"
+                >
+                  {isPending && pendingActionId === `pricing-${editingRoom.id}`
+                    ? 'Saving...'
+                    : 'Update Pricing'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
