@@ -1,5 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
+import SignOutButton from '@/components/admin/SignOutButton';
 
 export default function AdminLayout({
   children,
@@ -38,6 +39,12 @@ export default function AdminLayout({
                 Audit Trail
               </Link>
               <Link
+                href="/settings/website"
+                className="rounded-lg px-3 py-1.5 text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+              >
+                Website CMS
+              </Link>
+              <Link
                 href="/settings"
                 className="rounded-lg px-3 py-1.5 text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
               >
@@ -46,16 +53,11 @@ export default function AdminLayout({
             </nav>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
               ● Live Sync
             </span>
-            <Link
-              href="/login"
-              className="text-xs font-medium text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
-            >
-              Sign out
-            </Link>
+            <SignOutButton />
           </div>
         </div>
       </header>

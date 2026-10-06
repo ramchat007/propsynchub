@@ -171,3 +171,16 @@ export async function verifyMobileOtp(
     return { success: false, error: message };
   }
 }
+
+/**
+ * 3. SIGN OUT USER
+ * Clears the Supabase SSR session cookies on the server.
+ */
+export async function signOutUser() {
+  try {
+    const supabase = await createServerSupabaseClient();
+    await supabase.auth.signOut();
+  } catch (err) {
+    console.warn('[SignOut] Error clearing session:', err);
+  }
+}

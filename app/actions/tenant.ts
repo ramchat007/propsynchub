@@ -337,3 +337,120 @@ export async function completeOwnerOnboarding(
     return { success: false, error: message };
   }
 }
+
+/**
+ * 4. UPDATE RESORT WEBSITE CMS SETTINGS
+ * Allows resort owners to update their hero banner, story, gallery photos,
+ * amenities checklist, and WhatsApp concierge settings.
+ */
+export async function updateResortWebsiteSettings(
+  formData: FormData
+): Promise<{ success: boolean; error?: string; message?: string }> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { success: false, error: 'Unauthorized: Session required.' };
+    }
+
+    const tenantId = formData.get('tenantId')?.toString();
+    if (!tenantId) {
+      return { success: false, error: 'Missing tenant ID.' };
+    }
+
+    const adminDb = createAdminClient();
+
+    // Fetch existing settings
+    const { data: existingTenant, error: fetchError } = await adminDb
+      .from('tenants')
+      .select('settings, name, subdomain, contact_phone, contact_email')
+      .eq('id', tenantId)
+      .single();
+
+    if (fetchError || !existingTenant) {
+      return { success: false, error: 'Tenant record not found.' };
+    }
+
+    const existingSettings = (existingTenant.settings as Record<string, any>) || {};
+
+    // Parse incoming values
+    const tagline = formData.get('tagline')?.toString() || existingSettings.tagline;
+    const aboutDescription = formData.get('aboutDescription')?.toString() || existingSettings.about_description;
+    const heroImageUrl = formData.get('heroImageUrl')?.toString() || existingSettings.hero_image_url;
+    const address = formData.get('address')?.toString() || existingSettings.address;
+    const googleMapsUrl = formData.get('googleMapsUrl')?.toString() || existingSettings.google_maps_url;
+    const whatsappNumber = formData.get('whatsappNumber')?.toString() || existingSettings.whatsapp_number;
+    const contactPhone = formData.get('contactPhone')?.toString() || existingTenant.contact_phone;
+    const contactEmail = formData.get('contactEmail')?.toString() || existingTenant.contact_email;
+    const checkInTime = formData.get('checkInTime')?.toString() || existingSettings.check_in_time || '14:00';
+    const checkOutTime = formData.get('checkOutTime')?.toString() || existingSettings.check_out_time || '11:00';
+
+    let amenities: string[] = existingSettings.amenities || [];
+    const rawAmenities = formData.get('amenities')?.toString();
+    if (rawAmenities) {
+      try {
+        amenities = JSON.parse(rawAmenities);
+      } catch {
+        // Ignored
+      }
+    }
+
+    let galleryImages = existingSettings.gallery_images || [];
+    const rawGallery = formData.get('galleryImages')?.toString();
+    if (rawGallery) {
+      try {
+        galleryImages = JSON.parse(rawGallery);
+      } catch {
+        // Ignored
+      }
+    }
+
+    const updatedSettings = {
+      ...existingSettings,
+      tagline,
+      about_description: aboutDescription,
+      hero_image_url: heroImageUrl,
+      address,
+      google_maps_url: googleMapsUrl,
+      whatsapp_number: whatsappNumber,
+      contact_phone: contactPhone,
+      contact_email: contactEmail,
+      check_in_time: checkInTime,
+      check_out_time: checkOutTime,
+      amenities,
+      gallery_images: galleryImages,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error: updateError } = await adminDb
+      .from('tenants')
+      .update({
+        settings: updatedSettings,
+        contact_phone: contactPhone,
+        contact_email: contactEmail,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', tenantId);
+
+    if (updateError) {
+      throw new Error(updateError.message);
+    }
+
+    revalidatePath('/settings/website');
+    revalidatePath('/dashboard');
+    if (existingTenant.subdomain) {
+      revalidatePath(`/${existingTenant.subdomain}`);
+    }
+
+    return {
+      success: true,
+      message: 'Resort website & media settings updated successfully!',
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Error updating website settings.';
+    return { success: false, error: message };
+  }
+}
