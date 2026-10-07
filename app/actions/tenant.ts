@@ -374,21 +374,21 @@ export async function updateResortWebsiteSettings(
       return { success: false, error: 'Tenant record not found.' };
     }
 
-    const existingSettings = (existingTenant.settings as Record<string, any>) || {};
+    const existingSettings = (existingTenant.settings as Record<string, unknown>) || {};
 
     // Parse incoming values
-    const tagline = formData.get('tagline')?.toString() || existingSettings.tagline;
-    const aboutDescription = formData.get('aboutDescription')?.toString() || existingSettings.about_description;
-    const heroImageUrl = formData.get('heroImageUrl')?.toString() || existingSettings.hero_image_url;
-    const address = formData.get('address')?.toString() || existingSettings.address;
-    const googleMapsUrl = formData.get('googleMapsUrl')?.toString() || existingSettings.google_maps_url;
-    const whatsappNumber = formData.get('whatsappNumber')?.toString() || existingSettings.whatsapp_number;
+    const tagline = formData.get('tagline')?.toString() || (existingSettings.tagline as string | undefined);
+    const aboutDescription = formData.get('aboutDescription')?.toString() || (existingSettings.about_description as string | undefined);
+    const heroImageUrl = formData.get('heroImageUrl')?.toString() || (existingSettings.hero_image_url as string | undefined);
+    const address = formData.get('address')?.toString() || (existingSettings.address as string | undefined);
+    const googleMapsUrl = formData.get('googleMapsUrl')?.toString() || (existingSettings.google_maps_url as string | undefined);
+    const whatsappNumber = formData.get('whatsappNumber')?.toString() || (existingSettings.whatsapp_number as string | undefined);
     const contactPhone = formData.get('contactPhone')?.toString() || existingTenant.contact_phone;
     const contactEmail = formData.get('contactEmail')?.toString() || existingTenant.contact_email;
-    const checkInTime = formData.get('checkInTime')?.toString() || existingSettings.check_in_time || '14:00';
-    const checkOutTime = formData.get('checkOutTime')?.toString() || existingSettings.check_out_time || '11:00';
+    const checkInTime = formData.get('checkInTime')?.toString() || (existingSettings.check_in_time as string | undefined) || '14:00';
+    const checkOutTime = formData.get('checkOutTime')?.toString() || (existingSettings.check_out_time as string | undefined) || '11:00';
 
-    let amenities: string[] = existingSettings.amenities || [];
+    let amenities: string[] = (existingSettings.amenities as string[]) || [];
     const rawAmenities = formData.get('amenities')?.toString();
     if (rawAmenities) {
       try {
@@ -398,7 +398,7 @@ export async function updateResortWebsiteSettings(
       }
     }
 
-    let galleryImages = existingSettings.gallery_images || [];
+    let galleryImages = (existingSettings.gallery_images as unknown[]) || [];
     const rawGallery = formData.get('galleryImages')?.toString();
     if (rawGallery) {
       try {

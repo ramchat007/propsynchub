@@ -25,8 +25,21 @@ const PRESET_AMENITIES = [
   'Secured On-site Parking',
 ];
 
+interface ResortWebsiteSettings {
+  tagline?: string;
+  about_description?: string;
+  hero_image_url?: string;
+  address?: string;
+  google_maps_url?: string;
+  whatsapp_number?: string;
+  check_in_time?: string;
+  check_out_time?: string;
+  amenities?: string[];
+  gallery_images?: Array<{ id: string; url: string; caption: string; category?: string }>;
+}
+
 export default function ResortWebsiteCmsClient({ tenant }: ResortWebsiteCmsClientProps) {
-  const settings = (tenant.settings as Record<string, any>) || {};
+  const settings = (tenant.settings as unknown as ResortWebsiteSettings) || {};
 
   // Form states
   const [tagline, setTagline] = useState(

@@ -69,9 +69,11 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/admin') ||
     pathname.startsWith('/dashboard') ||
     pathname.startsWith('/bookings') ||
+    pathname.startsWith('/reports') ||
     pathname.startsWith('/audit-logs') ||
     pathname.startsWith('/settings');
   const isLoginRoute = pathname === '/login' || pathname === '/auth/login';
+  const isAuthRoute = pathname.startsWith('/auth');
   const isOnboardingRoute = pathname === '/onboarding' || pathname.startsWith('/onboarding');
 
   // Prepare mutable request headers for forwarding tenant context downstream
@@ -158,7 +160,7 @@ export async function middleware(request: NextRequest) {
   // TASK 3: URL REWRITING (App Router Multi-Tenant Mapping)
   // ---------------------------------------------------------------------------
   // If the request is for the root apex platform or is a platform route, do not rewrite
-  if (isApex || isAdminRoute || isLoginRoute || isOnboardingRoute || !tenantId) {
+  if (isApex || isAdminRoute || isLoginRoute || isOnboardingRoute || isAuthRoute || !tenantId) {
     return response;
   }
 

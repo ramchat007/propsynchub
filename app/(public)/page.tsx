@@ -1,5 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
+import InquiryFormClient from '@/components/public/InquiryFormClient';
 
 export default function PlatformHomePage() {
   return (
@@ -33,8 +34,8 @@ export default function PlatformHomePage() {
             <a href="#demo" className="transition hover:text-white">
               Live Demo
             </a>
-            <a href="#pricing" className="transition hover:text-white">
-              Subscription
+            <a href="#inquire" className="transition hover:text-white">
+              Request Demo
             </a>
           </nav>
 
@@ -45,13 +46,13 @@ export default function PlatformHomePage() {
             >
               Resort Owner Login
             </Link>
-            <Link
-              href="/login"
+            <a
+              href="#inquire"
               className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-bold text-neutral-950 shadow-md shadow-emerald-500/20 transition hover:bg-emerald-400 active:scale-95"
             >
-              <span>Get Started</span>
+              <span>Schedule Demo</span>
               <span>→</span>
-            </Link>
+            </a>
           </div>
         </div>
       </header>
@@ -237,9 +238,9 @@ export default function PlatformHomePage() {
             <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-950 text-xl text-emerald-400 border border-emerald-800/60">
               💳
             </span>
-            <h4 className="mt-4 text-base font-bold text-white">Direct Razorpay Payouts</h4>
+            <h4 className="mt-4 text-base font-bold text-white">Direct UPI &amp; Card Payouts</h4>
             <p className="mt-2 text-xs leading-relaxed text-neutral-400">
-              Resort owners plug in their own Razorpay keys. Guest payments land directly in the owner&apos;s account. PropSyncHub takes zero commission cuts.
+              Resort owners connect their preferred gateway—Razorpay, PhonePe, Cashfree, or Stripe—or accept direct UPI QR &amp; cash at property. Zero platform commission cuts.
             </p>
           </div>
 
@@ -296,80 +297,24 @@ export default function PlatformHomePage() {
       </section>
 
       {/* =================================================================== */}
-      {/* 5. PRICING & SUBSCRIPTION MODEL */}
+      {/* 5. RESORT CONSULTATION & OFFLINE ONBOARDING INQUIRY */}
       {/* =================================================================== */}
-      <section id="pricing" className="border-t border-neutral-800/80 bg-neutral-900/30 py-20">
+      <section id="inquire" className="border-t border-neutral-800/80 bg-neutral-900/30 py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
+          <div className="text-center max-w-3xl mx-auto">
             <span className="text-xs font-bold tracking-widest text-emerald-400 uppercase">
-              Predictable Pricing
+              Bespoke Deployment
             </span>
             <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
-              Keep 100% of Your Booking Revenue
+              Tailored Plans for Independent Resorts &amp; Luxury Villas
             </h2>
-            <p className="mx-auto mt-2 max-w-xl text-xs text-neutral-400 sm:text-sm">
-              No hidden commission fees. Choose a transparent yearly subscription for your property.
+            <p className="mx-auto mt-3 max-w-xl text-xs text-neutral-400 sm:text-sm">
+              Every property has unique inventory, dining folios, and custom domain needs. Schedule a private demonstration with our hospitality specialists.
             </p>
           </div>
 
-          <div className="mt-12 grid grid-cols-1 gap-8 md:grid-cols-2 max-w-4xl mx-auto">
-            {/* Starter Plan */}
-            <div className="rounded-3xl border border-neutral-800 bg-neutral-900/80 p-8 shadow-lg">
-              <span className="rounded-full bg-neutral-800 px-3 py-1 text-[11px] font-bold text-neutral-300">
-                Starter Plan
-              </span>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-4xl font-extrabold text-white">₹15,000</span>
-                <span className="text-xs text-neutral-400">/ year</span>
-              </div>
-              <p className="mt-2 text-xs text-neutral-400">
-                Ideal for independent villas and homestays launching direct bookings.
-              </p>
-
-              <ul className="mt-6 space-y-3 text-xs text-neutral-300 border-t border-neutral-800 pt-6">
-                <li className="flex items-center gap-2">✓ Branded Subdomain (resort.propsynchub.com)</li>
-                <li className="flex items-center gap-2">✓ Direct Booking Engine &amp; Date Picker</li>
-                <li className="flex items-center gap-2">✓ Razorpay Payment Integration</li>
-                <li className="flex items-center gap-2">✓ Unified Restaurant &amp; Spa Folio</li>
-                <li className="flex items-center gap-2">✓ Mobile OTP Admin Access</li>
-              </ul>
-
-              <Link
-                href="/login"
-                className="mt-8 block w-full rounded-2xl border border-neutral-700 bg-neutral-800 py-3 text-center text-xs font-bold text-white transition hover:bg-neutral-700"
-              >
-                Choose Starter
-              </Link>
-            </div>
-
-            {/* Pro Plan */}
-            <div className="relative rounded-3xl border-2 border-emerald-500 bg-gradient-to-b from-neutral-900 to-emerald-950/20 p-8 shadow-2xl">
-              <span className="rounded-full bg-emerald-500 px-3 py-1 text-[11px] font-bold text-neutral-950">
-                Most Popular
-              </span>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-4xl font-extrabold text-white">₹35,000</span>
-                <span className="text-xs text-neutral-400">/ year</span>
-              </div>
-              <p className="mt-2 text-xs text-neutral-400">
-                For boutique resorts requiring a custom domain and zero platform branding.
-              </p>
-
-              <ul className="mt-6 space-y-3 text-xs text-neutral-300 border-t border-neutral-800 pt-6">
-                <li className="flex items-center gap-2 font-bold text-white">✓ Everything in Starter, plus:</li>
-                <li className="flex items-center gap-2">✓ <strong>Custom Domain</strong> (e.g. raigadtropical.com)</li>
-                <li className="flex items-center gap-2">✓ 100% White-Label (No &quot;Powered by&quot; link)</li>
-                <li className="flex items-center gap-2">✓ Priority WhatsApp Guest Support Hook</li>
-                <li className="flex items-center gap-2">✓ Multiple Staff Roles &amp; Permissions</li>
-              </ul>
-
-              <Link
-                href="/login"
-                className="mt-8 block w-full rounded-2xl bg-emerald-500 py-3 text-center text-xs font-black text-neutral-950 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-400"
-              >
-                Start 14-Day Free Trial
-              </Link>
-            </div>
+          <div className="mt-12">
+            <InquiryFormClient />
           </div>
         </div>
       </section>

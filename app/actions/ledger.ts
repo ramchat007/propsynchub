@@ -340,7 +340,10 @@ export async function settleBookingInvoice(
   bookingId: string,
   tenantId: string,
   newPaymentStatus: 'paid' | 'pending' | 'partially_paid' = 'paid',
-  newBookingStatus: 'checked_out' | 'confirmed' | 'checked_in' = 'checked_out'
+  newBookingStatus: 'checked_out' | 'confirmed' | 'checked_in' = 'checked_out',
+  paymentMethod: string = 'upi',
+  paymentReference: string = '',
+  settleNotes: string = ''
 ): Promise<LedgerActionResponse> {
   try {
     const supabase = await createServerSupabaseClient();
@@ -357,13 +360,22 @@ export async function settleBookingInvoice(
 
     const oldBookingTyped = oldBooking as unknown as Booking | null;
 
+    const updatePayload: Record<string, unknown> = {
+      booking_status: newBookingStatus,
+      payment_status: newPaymentStatus,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (paymentReference) {
+      updatePayload.razorpay_payment_id = paymentReference;
+    }
+    if (settleNotes) {
+      updatePayload.special_requests = settleNotes;
+    }
+
     const { error: updateError } = await adminDb
       .from('bookings')
-      .update({
-        booking_status: newBookingStatus,
-        payment_status: newPaymentStatus,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq('id', bookingId);
 
     if (updateError) {
@@ -381,10 +393,14 @@ export async function settleBookingInvoice(
         old_data: {
           booking_status: oldBookingTyped?.booking_status,
           payment_status: oldBookingTyped?.payment_status,
+          payment_id: oldBookingTyped?.razorpay_payment_id,
         },
         new_data: {
           booking_status: newBookingStatus,
           payment_status: newPaymentStatus,
+          payment_method: paymentMethod,
+          payment_reference: paymentReference || null,
+          settle_notes: settleNotes || null,
           settled_at: new Date().toISOString(),
         },
         created_at: new Date().toISOString(),
@@ -398,9 +414,11 @@ export async function settleBookingInvoice(
     revalidatePath('/audit-logs');
     revalidatePath('/dashboard');
 
+    const paymentLabel = paymentReference ? `(Mode: ${paymentMethod.toUpperCase()}, Ref: ${paymentReference})` : `(Payment: ${newPaymentStatus.toUpperCase()})`;
+
     return {
       success: true,
-      message: `Booking #${bookingId.slice(0, 8).toUpperCase()} settled as ${newBookingStatus.replace('_', ' ').toUpperCase()} (Payment: ${newPaymentStatus.toUpperCase()}).`,
+      message: `Booking #${bookingId.slice(0, 8).toUpperCase()} settled as ${newBookingStatus.replace('_', ' ').toUpperCase()} ${paymentLabel}.`,
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to update booking status.';

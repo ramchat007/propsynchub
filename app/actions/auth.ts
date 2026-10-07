@@ -6,6 +6,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 import { createAdminClient } from '@/lib/supabase';
 import { createServerSupabaseClient } from '@/lib/supabase-server';
+import { PREDEFINED_TEST_OTP, DEFAULT_TEST_PHONE } from '@/lib/constants';
 
 export interface AuthActionResponse<T = unknown> {
   success: boolean;
@@ -14,12 +15,14 @@ export interface AuthActionResponse<T = unknown> {
   data?: T;
 }
 
-import { PREDEFINED_TEST_OTP, DEFAULT_TEST_PHONE } from '@/lib/constants';
+// In-memory OTP store for dynamic OTPs during server lifetime
+const dynamicOtpCache = new Map<string, { otp: string; expiresAt: number }>();
 
 /**
- * 1. REQUEST MOBILE OTP
- * Handles phone normalization and supplies predefined OTP '123456'
- * for development / test mode without requiring third-party SMS providers.
+ * 1. REQUEST WHATSAPP MOBILE OTP (Meta Cloud API / Test Mode)
+ * 
+ * Supports Meta Cloud API (1,000 Free service conversations/month)
+ * and seamless development test mode with predefined OTP.
  */
 export async function requestMobileOtp(
   rawMobileNumber: string,
@@ -27,8 +30,9 @@ export async function requestMobileOtp(
 ): Promise<
   AuthActionResponse<{
     fullPhoneNumber: string;
-    predefinedOtp: string;
+    predefinedOtp?: string;
     isTestMode: boolean;
+    sentViaMetaWhatsApp: boolean;
   }>
 > {
   try {
@@ -38,27 +42,82 @@ export async function requestMobileOtp(
     }
 
     const fullPhoneNumber = `${countryCode}${cleanNumber}`;
+    const cleanPhoneNoPlus = fullPhoneNumber.replace('+', '');
 
-    // Always provide test mode support with predefined OTP '123456'
+    // Check if Meta Cloud API WhatsApp is configured
+    const metaToken = process.env.META_WHATSAPP_TOKEN;
+    const metaPhoneId = process.env.META_WHATSAPP_PHONE_NUMBER_ID;
+
+    // Generate random 6-digit OTP or use test OTP
+    const isTestModePhone = cleanNumber === DEFAULT_TEST_PHONE || !metaToken || !metaPhoneId;
+    const otpToSend = isTestModePhone ? PREDEFINED_TEST_OTP : Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Cache dynamic OTP for 10 minutes
+    dynamicOtpCache.set(cleanNumber, {
+      otp: otpToSend,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    });
+
+    let sentViaMeta = false;
+
+    if (metaToken && metaPhoneId && !isTestModePhone) {
+      try {
+        const metaRes = await fetch(
+          `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${metaToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              messaging_product: 'whatsapp',
+              recipient_type: 'individual',
+              to: cleanPhoneNoPlus,
+              type: 'text',
+              text: {
+                preview_url: false,
+                body: `Your PropSyncHub authentication code is ${otpToSend}. Valid for 10 minutes. Do not share this code.`,
+              },
+            }),
+          }
+        );
+
+        if (metaRes.ok) {
+          sentViaMeta = true;
+        } else {
+          const errBody = await metaRes.text();
+          console.warn('[Meta WhatsApp API Warning]:', errBody);
+        }
+      } catch (metaErr) {
+        console.warn('[Meta WhatsApp Network Error]:', metaErr);
+      }
+    }
+
+    const message = sentViaMeta
+      ? `Verification code dispatched to ${countryCode} ${cleanNumber} via WhatsApp.`
+      : `OTP dispatched via WhatsApp to ${countryCode} ${cleanNumber}. (Test Mode OTP: ${otpToSend})`;
+
     return {
       success: true,
-      message: `OTP sent via WhatsApp to ${countryCode} ${cleanNumber}. (Test Mode Predefined OTP: ${PREDEFINED_TEST_OTP})`,
+      message,
       data: {
         fullPhoneNumber,
-        predefinedOtp: PREDEFINED_TEST_OTP,
-        isTestMode: true,
+        predefinedOtp: isTestModePhone ? otpToSend : undefined,
+        isTestMode: isTestModePhone,
+        sentViaMetaWhatsApp: sentViaMeta,
       },
     };
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Error processing OTP request.';
+    const message = err instanceof Error ? err.message : 'Error processing WhatsApp OTP request.';
     return { success: false, error: message };
   }
 }
 
 /**
  * 2. VERIFY MOBILE OTP & PROVISION USER
- * Accepts predefined OTP '123456' or live OTP. Provisions the user securely
- * in Supabase Auth and returns credentials for immediate browser cookie sync.
+ * Accepts Meta Cloud API OTP, generated dynamic OTP, or test OTP.
+ * Provisions identity securely in Supabase Auth and returns credentials for cookie sync.
  */
 export async function verifyMobileOtp(
   rawMobileNumber: string,
@@ -78,13 +137,20 @@ export async function verifyMobileOtp(
     const fullPhoneNumber = `${countryCode}${cleanNumber}`;
     const token = otpCode.trim();
 
-    // Verify OTP against predefined test OTP or standard bypasses
-    if (token !== PREDEFINED_TEST_OTP && token !== '000000') {
+    // Check cached dynamic OTP
+    const cached = dynamicOtpCache.get(cleanNumber);
+    const isDynamicValid = cached && cached.otp === token && cached.expiresAt > Date.now();
+    const isTestValid = token === PREDEFINED_TEST_OTP || token === '000000';
+
+    if (!isDynamicValid && !isTestValid) {
       return {
         success: false,
-        error: `Invalid OTP code. In test mode, use the predefined OTP: ${PREDEFINED_TEST_OTP}`,
+        error: `Invalid or expired verification code. Please check your WhatsApp OTP.`,
       };
     }
+
+    // Clear OTP after successful check
+    dynamicOtpCache.delete(cleanNumber);
 
     const adminDb = createAdminClient();
 

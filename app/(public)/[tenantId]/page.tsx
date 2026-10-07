@@ -1,6 +1,5 @@
 import React, { Suspense } from 'react';
 import { notFound } from 'next/navigation';
-import { createServerSupabaseClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase';
 import ResortShowcaseClient from '@/components/public/ResortShowcaseClient';
 import { Tenant, Room, RoomCategory } from '@/types';
@@ -17,7 +16,6 @@ export default async function TenantHomePage({ params }: TenantPageProps) {
   const { tenantId } = await params;
   const decodedTenantParam = decodeURIComponent(tenantId);
 
-  const supabase = await createServerSupabaseClient();
   const adminDb = createAdminClient();
 
   // 1. Resolve Tenant from Supabase (by id, subdomain, or custom_domain)

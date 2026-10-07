@@ -245,7 +245,7 @@ export async function createReservation(payload: {
         num_adults: adults,
         num_children: children,
         total_amount_inr: totalAmount,
-        booking_status: 'confirmed',
+        booking_status: 'pending',
         payment_status: 'pending',
         special_requests: specialRequests?.trim() || null,
       })
@@ -262,6 +262,84 @@ export async function createReservation(payload: {
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to finalize reservation.';
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Update Booking Status (Accept / Decline / Check In / Check Out)
+ * Admin action allowing manual acceptance after offline room availability check.
+ */
+export async function updateBookingStatus(
+  bookingId: string,
+  tenantId: string,
+  newStatus: 'confirmed' | 'cancelled' | 'checked_in' | 'checked_out',
+  notes?: string
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    if (!bookingId || !tenantId) {
+      return { success: false, error: 'Booking ID and Tenant ID are required.' };
+    }
+
+    const supabase = await createServerSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const updatePayload: Record<string, unknown> = {
+      booking_status: newStatus,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (notes) {
+      updatePayload.special_requests = notes;
+    }
+
+    const { error: updateError } = await supabase
+      .from('bookings')
+      .update(updatePayload)
+      .eq('id', bookingId)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    // Direct audit trail entry
+    try {
+      await supabase.from('audit_logs').insert({
+        tenant_id: tenantId,
+        user_id: user?.id || null,
+        table_name: 'bookings',
+        record_id: bookingId,
+        action_type: 'UPDATE',
+        old_data: null,
+        new_data: {
+          booking_status: newStatus,
+          action_by: user?.id || null,
+          updated_at: new Date().toISOString(),
+        },
+        created_at: new Date().toISOString(),
+      });
+    } catch {
+      // Audit log fallback
+    }
+
+    const actionText =
+      newStatus === 'confirmed'
+        ? 'Accepted & Confirmed'
+        : newStatus === 'cancelled'
+        ? 'Declined / Cancelled'
+        : newStatus === 'checked_in'
+        ? 'Checked In'
+        : 'Checked Out';
+
+    return {
+      success: true,
+      message: `Booking #${bookingId.slice(0, 8).toUpperCase()} successfully marked as ${actionText}.`,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to update booking status.';
     return { success: false, error: message };
   }
 }

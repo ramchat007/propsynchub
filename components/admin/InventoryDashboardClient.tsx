@@ -24,7 +24,7 @@ export default function InventoryDashboardClient({
   initialCategories,
   initialRooms,
   initialPricing,
-  userRole = 'tenant_admin',
+  userRole: _userRole = 'tenant_admin',
 }: InventoryDashboardClientProps) {
   // Navigation & Filter state
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
@@ -202,15 +202,32 @@ export default function InventoryDashboardClient({
             <h1 className="text-2xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
               {tenant?.name || 'Resort Inventory & Rooms'}
             </h1>
-            <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
-              {userRole.toUpperCase()}
-            </span>
           </div>
-          <p className="mt-1 text-sm text-neutral-500">
-            {tenant?.subdomain
-              ? `Subdomain: ${tenant.subdomain}.propsynchub.com`
-              : 'Multi-tenant property inventory management'}
-          </p>
+          <div className="mt-1.5 flex items-center gap-2 text-xs text-neutral-500">
+            {tenant?.custom_domain ? (
+              <a
+                href={`https://${tenant.custom_domain}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 font-mono font-semibold text-emerald-600 hover:underline dark:text-emerald-400"
+              >
+                <span>🌐 {tenant.custom_domain}</span>
+                <span>↗</span>
+              </a>
+            ) : tenant?.subdomain ? (
+              <a
+                href={`/${tenant.subdomain}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 font-mono text-neutral-500 hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
+              >
+                <span>🌐 {tenant.subdomain}.propsynchub.com</span>
+                <span>↗</span>
+              </a>
+            ) : (
+              <span>Multi-tenant property inventory management</span>
+            )}
+          </div>
         </div>
 
         {/* Action Buttons */}

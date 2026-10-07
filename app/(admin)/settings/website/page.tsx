@@ -27,7 +27,7 @@ export default async function ResortWebsiteCmsPage() {
     .eq('id', user.id)
     .single();
 
-  let tenantId = profile?.tenant_id || process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID;
+  const tenantId = profile?.tenant_id || process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID;
 
   let tenant: Tenant | null = null;
   if (tenantId) {

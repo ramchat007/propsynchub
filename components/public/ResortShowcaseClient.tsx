@@ -11,14 +11,30 @@ interface ResortShowcaseClientProps {
   tenantParam: string;
 }
 
+interface ShowcaseSettings {
+  primary_color_hex?: string;
+  tagline?: string;
+  about_description?: string;
+  hero_image_url?: string;
+  address?: string;
+  whatsapp_number?: string;
+  contact_phone?: string;
+  contact_email?: string;
+  check_in_time?: string;
+  check_out_time?: string;
+  google_maps_url?: string;
+  amenities?: string[];
+  gallery_images?: Array<{ id: string; url: string; caption: string; category?: string }>;
+}
+
 export default function ResortShowcaseClient({
   tenant,
   rooms,
-  categories,
+  categories: _categories,
   tenantParam,
 }: ResortShowcaseClientProps) {
   // Extract website settings with safe fallbacks
-  const settings = (tenant.settings as Record<string, any>) || {};
+  const settings = (tenant.settings as unknown as ShowcaseSettings) || {};
   const primaryColor = settings.primary_color_hex || '#c0395b';
   const tagline =
     settings.tagline ||
@@ -605,12 +621,19 @@ export default function ResortShowcaseClient({
           <p className="mt-2 text-[11px]">
             Check-in: {settings.check_in_time || '14:00'} · Check-out: {settings.check_out_time || '11:00'}
           </p>
-          <div className="mt-4 border-t border-stone-200/60 pt-4 dark:border-neutral-900">
+          <div className="mt-4 flex items-center justify-center gap-4 border-t border-stone-200/60 pt-4 text-[10px] dark:border-neutral-900">
             <Link
               href="/"
-              className="text-[10px] text-stone-400 hover:text-stone-700 dark:hover:text-stone-300"
+              className="text-stone-400 hover:text-stone-700 dark:hover:text-stone-300"
             >
               Powered by PropSyncHub Platform
+            </Link>
+            <span className="text-stone-300 dark:text-neutral-800">·</span>
+            <Link
+              href="/login"
+              className="text-stone-400 hover:text-stone-700 dark:hover:text-stone-300 inline-flex items-center gap-1 font-medium"
+            >
+              <span>🔒 Staff / Owner Login</span>
             </Link>
           </div>
         </div>

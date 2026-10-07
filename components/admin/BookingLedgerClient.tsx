@@ -48,6 +48,12 @@ export default function BookingLedgerClient({ initialDetails }: BookingLedgerCli
   // Invoice Modal State
   const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
 
+  // Settle & Checkout Confirmation Modal State
+  const [isSettleModalOpen, setIsSettleModalOpen] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'upi' | 'cash' | 'card' | 'bank_transfer' | 'razorpay'>('upi');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [settleNotes, setSettleNotes] = useState('');
+
   /**
    * Handle adding an incidental charge
    */
@@ -122,11 +128,21 @@ export default function BookingLedgerClient({ initialDetails }: BookingLedgerCli
   }
 
   /**
-   * Settle invoice & mark as checked out
+   * Settle invoice & mark as checked out with actual payment confirmation
    */
-  function handleSettleBooking() {
+  function handleSettleBooking(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+
     startTransition(async () => {
-      const res = await settleBookingInvoice(booking.id, booking.tenant_id, 'paid', 'checked_out');
+      const res = await settleBookingInvoice(
+        booking.id,
+        booking.tenant_id,
+        'paid',
+        'checked_out',
+        paymentMethod,
+        paymentReference,
+        settleNotes
+      );
       if (res.success) {
         setFeedback({ type: 'success', message: res.message || 'Booking settled.' });
         setDetails({
@@ -135,8 +151,10 @@ export default function BookingLedgerClient({ initialDetails }: BookingLedgerCli
             ...details.booking,
             booking_status: 'checked_out',
             payment_status: 'paid',
+            razorpay_payment_id: paymentReference || details.booking.razorpay_payment_id,
           },
         });
+        setIsSettleModalOpen(false);
         setIsInvoiceOpen(false);
         router.refresh();
       } else {
@@ -170,10 +188,20 @@ export default function BookingLedgerClient({ initialDetails }: BookingLedgerCli
         </div>
 
         <div className="flex items-center gap-3">
+          {booking.booking_status !== 'checked_out' && (
+            <button
+              type="button"
+              onClick={() => setIsSettleModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-600 bg-emerald-50 px-3.5 py-2.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-700"
+            >
+              <span>✓ Settle &amp; Check Out</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setIsInvoiceOpen(true)}
-            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-500"
+            className="inline-flex items-center gap-2 rounded-xl bg-neutral-900 px-4 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -604,6 +632,22 @@ export default function BookingLedgerClient({ initialDetails }: BookingLedgerCli
                 <p className="mt-1 text-[11px] text-neutral-400">
                   Date: {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                 </p>
+                <div className="mt-1 text-[11px]">
+                  <span
+                    className={`font-bold uppercase ${
+                      booking.payment_status === 'paid'
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-amber-600 dark:text-amber-400'
+                    }`}
+                  >
+                    Payment: {booking.payment_status.toUpperCase()}
+                  </span>
+                  {booking.razorpay_payment_id && (
+                    <p className="font-mono text-[10px] text-neutral-500">
+                      Ref / UTR: {booking.razorpay_payment_id}
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -714,15 +758,119 @@ export default function BookingLedgerClient({ initialDetails }: BookingLedgerCli
                 {booking.booking_status !== 'checked_out' && (
                   <button
                     type="button"
-                    onClick={handleSettleBooking}
-                    disabled={isPending}
-                    className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-500 disabled:opacity-50"
+                    onClick={() => setIsSettleModalOpen(true)}
+                    className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-500"
                   >
-                    {isPending ? 'Settling...' : 'Mark as Settled & Check Out'}
+                    Mark as Settled &amp; Check Out
                   </button>
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* 5. PAYMENT CONFIRMATION & SETTLEMENT DIALOG */}
+      {/* ===================================================================== */}
+      {isSettleModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-3xl border border-neutral-200 bg-white p-6 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
+              <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+                Settle Invoice &amp; Check Out
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsSettleModalOpen(false)}
+                className="text-neutral-400 hover:text-neutral-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSettleBooking} className="mt-4 space-y-4 text-xs">
+              {/* Grand Total Summary */}
+              <div className="rounded-2xl bg-neutral-50 p-4 dark:bg-neutral-800/60 flex items-center justify-between">
+                <div>
+                  <span className="text-neutral-500 block">Total Folio Balance</span>
+                  <span className="font-bold text-neutral-800 dark:text-neutral-200">
+                    {booking.guest_name} (#{booking.id.slice(0, 8).toUpperCase()})
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">
+                    ₹{grandTotal.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+
+              {/* Payment Method */}
+              <div>
+                <label className="block text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
+                  Payment Method Received *
+                </label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value as 'upi' | 'cash' | 'card' | 'bank_transfer' | 'razorpay')}
+                  className="mt-1.5 w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-850 dark:text-neutral-100"
+                >
+                  <option value="upi">Direct UPI (Google Pay / PhonePe / Paytm / BHIM QR)</option>
+                  <option value="cash">Cash at Front Desk</option>
+                  <option value="card">Card POS Machine (Debit / Credit Terminal)</option>
+                  <option value="bank_transfer">Bank IMPS / NEFT Transfer</option>
+                  <option value="razorpay">Online Payment Gateway</option>
+                </select>
+              </div>
+
+              {/* Payment Reference ID */}
+              <div>
+                <label className="block text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
+                  Payment / Reference ID (UTR / Txn Slip Number)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. 529103948291, POS Slip #4819, or Cash Memo"
+                  value={paymentReference}
+                  onChange={(e) => setPaymentReference(e.target.value)}
+                  className="mt-1.5 w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-xs font-mono text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-850 dark:text-neutral-100"
+                />
+                <p className="mt-1 text-[10px] text-neutral-400">
+                  Required for UPI &amp; Cards to prevent discrepancies and print on Tax Invoice.
+                </p>
+              </div>
+
+              {/* Settlement Notes */}
+              <div>
+                <label className="block text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
+                  Settlement Notes (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Settled in full upon keys handover"
+                  value={settleNotes}
+                  onChange={(e) => setSettleNotes(e.target.value)}
+                  className="mt-1.5 w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-850 dark:text-neutral-100"
+                />
+              </div>
+
+              <div className="mt-6 flex justify-end gap-2 border-t border-neutral-100 pt-4 dark:border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setIsSettleModalOpen(false)}
+                  className="rounded-xl border border-neutral-300 px-4 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isPending}
+                  className="rounded-xl bg-emerald-600 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-500 disabled:opacity-50"
+                >
+                  {isPending ? 'Settling...' : 'Confirm Payment & Check Out'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
