@@ -344,23 +344,50 @@ export async function verifyRazorpayPayment(payload: {
       return { success: false, error: 'Payment signature validation failed. Transaction could not be verified.' };
     }
 
-    // 3. Update Booking to CONFIRMED and PAID
-    const { data: updatedBooking, error: updateErr } = await adminDb
+    // 2b. Fetch current booking to determine total and advance amounts
+    const { data: existingBooking } = await adminDb
       .from('bookings')
-      .update({
-        booking_status: 'confirmed',
-        payment_status: 'paid',
-        razorpay_order_id: orderId,
-        razorpay_payment_id: paymentId,
-        razorpay_signature: signature,
-        updated_at: new Date().toISOString(),
-      })
+      .select('total_amount_inr, paid_amount_inr')
+      .eq('id', bookingId)
+      .single();
+
+    const totalBill = Number(existingBooking?.total_amount_inr || 0);
+
+    // 3. Update Booking to CONFIRMED and handle payment balance
+    const updateBookingPayload: Record<string, unknown> = {
+      booking_status: 'confirmed',
+      payment_status: 'paid',
+      paid_amount_inr: totalBill,
+      balance_amount_inr: 0,
+      razorpay_order_id: orderId,
+      razorpay_payment_id: paymentId,
+      razorpay_signature: signature,
+      updated_at: new Date().toISOString(),
+    };
+
+    let { data: updatedBooking, error: updateErr } = await adminDb
+      .from('bookings')
+      .update(updateBookingPayload)
       .eq('id', bookingId)
       .select()
       .single();
 
-    if (updateErr || !updatedBooking) {
-      throw updateErr || new Error('Failed to update booking status.');
+    if (updateErr) {
+      // Fallback without paid/balance columns if pending DB schema sync
+      delete updateBookingPayload.paid_amount_inr;
+      delete updateBookingPayload.balance_amount_inr;
+      const retry = await adminDb
+        .from('bookings')
+        .update(updateBookingPayload)
+        .eq('id', bookingId)
+        .select()
+        .single();
+      if (retry.error) throw retry.error;
+      updatedBooking = retry.data;
+    }
+
+    if (!updatedBooking) {
+      throw new Error('Failed to update booking status.');
     }
 
     // 4. Dispatch Transactional Confirmation Email if guest email is on record

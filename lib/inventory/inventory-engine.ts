@@ -111,11 +111,14 @@ export async function calculateInventoryAvailability(
 
     bookings.forEach((b) => {
       if (b.booking_status === 'confirmed' || b.booking_status === 'checked_in') {
-        confirmedRoomIds.add(b.room_id);
+        if (b.room_id) confirmedRoomIds.add(b.room_id);
       } else if (b.booking_status === 'pending') {
-        const createdAt = new Date(b.created_at).getTime();
-        // If created within last 15 minutes, it's an active hold
-        if (createdAt > holdCutoff) {
+        // P0.2 Hold TTL evaluation: check hold_expires_at or fallback to 15m creation cutoff
+        const isHoldActive = b.hold_expires_at
+          ? new Date(b.hold_expires_at).getTime() > now
+          : new Date(b.created_at).getTime() > holdCutoff;
+
+        if (isHoldActive && b.room_id) {
           heldRoomIds.add(b.room_id);
         }
       }
@@ -131,9 +134,13 @@ export async function calculateInventoryAvailability(
 
       const totalUnits = categoryRooms.length;
 
-      // Units in maintenance or blocked
+      // Units in maintenance, blocked, dirty, or cleaning
       const maintenanceUnits = categoryRooms.filter(
-        (r) => r.status === 'maintenance' || r.status === 'blocked'
+        (r) =>
+          r.status === 'maintenance' ||
+          r.status === 'blocked' ||
+          r.status === 'dirty' ||
+          r.status === 'cleaning'
       ).length;
 
       // Count booked and held units in this category

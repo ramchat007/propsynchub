@@ -360,11 +360,17 @@ export async function settleBookingInvoice(
 
     const oldBookingTyped = oldBooking as unknown as Booking | null;
 
+    const totalBill = Number(oldBookingTyped?.total_amount_inr || 0);
     const updatePayload: Record<string, unknown> = {
       booking_status: newBookingStatus,
       payment_status: newPaymentStatus,
       updated_at: new Date().toISOString(),
     };
+
+    if (newPaymentStatus === 'paid') {
+      updatePayload.paid_amount_inr = totalBill;
+      updatePayload.balance_amount_inr = 0;
+    }
 
     if (paymentReference) {
       updatePayload.razorpay_payment_id = paymentReference;
@@ -379,7 +385,29 @@ export async function settleBookingInvoice(
       .eq('id', bookingId);
 
     if (updateError) {
-      throw updateError;
+      // In case paid_amount_inr column is not yet migrated, fallback without those columns
+      delete updatePayload.paid_amount_inr;
+      delete updatePayload.balance_amount_inr;
+      const { error: retryError } = await adminDb
+        .from('bookings')
+        .update(updatePayload)
+        .eq('id', bookingId);
+      if (retryError) throw retryError;
+    }
+
+    // P0.1 Housekeeping Trigger: If checked out, immediately mark room dirty
+    if (newBookingStatus === 'checked_out' && oldBookingTyped?.room_id) {
+      try {
+        await adminDb
+          .from('rooms')
+          .update({
+            status: 'dirty',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', oldBookingTyped.room_id);
+      } catch (rErr) {
+        console.warn('[Checkout Room Dirty Update Warning]:', rErr);
+      }
     }
 
     // Direct audit log write

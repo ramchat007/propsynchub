@@ -2,7 +2,9 @@
 
 import { revalidatePath } from 'next/cache';
 import { createServerSupabaseClient } from '@/lib/supabase-server';
-import { Room, RoomCategory, Booking } from '@/types';
+import { createAdminClient } from '@/lib/supabase';
+import { Room, RoomCategory, Booking, PaymentPolicy } from '@/types';
+import { notifications } from '@/lib/notifications';
 
 export interface RoomWithPricing extends Room {
   nights: number;
@@ -78,7 +80,7 @@ export async function checkRoomAvailability(
     // An overlap exists when: booking.check_in_date < checkOut AND booking.check_out_date > checkIn
     const { data: overlappingBookings, error: bookingsError } = await supabase
       .from('bookings')
-      .select('room_id')
+      .select('room_id, booking_status, hold_expires_at, created_at')
       .eq('tenant_id', tenantId)
       .neq('booking_status', 'cancelled')
       .lt('check_in_date', checkOut)
@@ -86,8 +88,25 @@ export async function checkRoomAvailability(
 
     if (bookingsError) throw bookingsError;
 
+    // Filter out expired pending holds (P0.2: 15-min hold TTL)
+    const now = Date.now();
+    const activeOverlapping = (overlappingBookings || []).filter((b) => {
+      if (b.booking_status === 'confirmed' || b.booking_status === 'checked_in') {
+        return true;
+      }
+      if (b.booking_status === 'pending') {
+        if (b.hold_expires_at) {
+          return new Date(b.hold_expires_at).getTime() > now;
+        }
+        // Fallback: 15-minute hold TTL based on created_at
+        const createdAt = new Date(b.created_at).getTime();
+        return now - createdAt < 15 * 60 * 1000;
+      }
+      return false;
+    });
+
     const bookedRoomIds = new Set(
-      (overlappingBookings || []).map((b) => b.room_id).filter(Boolean)
+      activeOverlapping.map((b) => b.room_id).filter(Boolean)
     );
 
     // 3. Fetch room categories to determine extra pax charges
@@ -179,7 +198,8 @@ export async function checkRoomAvailability(
  */
 export async function createReservation(payload: {
   tenantId: string;
-  roomId: string;
+  roomId?: string | null;
+  categoryId?: string | null;
   checkIn: string;
   checkOut: string;
   adults: number;
@@ -189,11 +209,14 @@ export async function createReservation(payload: {
   guestEmail?: string;
   totalAmount: number;
   specialRequests?: string;
+  paymentPolicy?: PaymentPolicy;
+  paidAmount?: number;
 }): Promise<{ success: boolean; error?: string; booking?: Booking }> {
   try {
     const {
       tenantId,
       roomId,
+      categoryId,
       checkIn,
       checkOut,
       adults,
@@ -203,40 +226,159 @@ export async function createReservation(payload: {
       guestEmail,
       totalAmount,
       specialRequests,
+      paymentPolicy = 'FULL_PAYMENT',
+      paidAmount = 0,
     } = payload;
 
-    if (!tenantId || !roomId || !checkIn || !checkOut || !guestName || !guestMobile) {
+    if (!tenantId || (!roomId && !categoryId) || !checkIn || !checkOut || !guestName || !guestMobile) {
       return { success: false, error: 'Missing required reservation fields.' };
     }
 
     const supabase = await createServerSupabaseClient();
+    const adminDb = createAdminClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    // Double check that room wasn't booked in the interim
-    const { data: collision } = await supabase
-      .from('bookings')
-      .select('id')
-      .eq('tenant_id', tenantId)
-      .eq('room_id', roomId)
-      .neq('booking_status', 'cancelled')
-      .lt('check_in_date', checkOut)
-      .gt('check_out_date', checkIn)
-      .limit(1);
+    let resolvedRoomId = roomId || null;
+    let resolvedCategoryId = categoryId || null;
 
-    if (collision && collision.length > 0) {
-      return {
-        success: false,
-        error: 'This room was just booked by another guest for the selected dates. Please choose another room.',
-      };
+    // 1. If category provided but no roomId, find an available physical room in that category
+    if (!resolvedRoomId && resolvedCategoryId) {
+      const { data: catRooms } = await adminDb
+        .from('rooms')
+        .select('id, name, status')
+        .eq('tenant_id', tenantId)
+        .eq('category_id', resolvedCategoryId)
+        .in('status', ['available', 'inspected']);
+
+      if (catRooms && catRooms.length > 0) {
+        // Query overlapping active bookings for these rooms
+        const roomIds = catRooms.map((r) => r.id);
+        const { data: busyBookings } = await adminDb
+          .from('bookings')
+          .select('room_id, booking_status, hold_expires_at, created_at')
+          .in('room_id', roomIds)
+          .neq('booking_status', 'cancelled')
+          .lt('check_in_date', checkOut)
+          .gt('check_out_date', checkIn);
+
+        const now = Date.now();
+        const busyRoomIds = new Set(
+          (busyBookings || [])
+            .filter((b) => {
+              if (b.booking_status === 'confirmed' || b.booking_status === 'checked_in') return true;
+              if (b.booking_status === 'pending') {
+                if (b.hold_expires_at) return new Date(b.hold_expires_at).getTime() > now;
+                return now - new Date(b.created_at).getTime() < 15 * 60 * 1000;
+              }
+              return false;
+            })
+            .map((b) => b.room_id)
+        );
+
+        const freeRoom = catRooms.find((r) => !busyRoomIds.has(r.id));
+        if (freeRoom) {
+          resolvedRoomId = freeRoom.id;
+        }
+      }
+    }
+
+    // 2. If room specified, check category and double check collision
+    if (resolvedRoomId) {
+      if (!resolvedCategoryId) {
+        const { data: rm } = await adminDb
+          .from('rooms')
+          .select('category_id')
+          .eq('id', resolvedRoomId)
+          .single();
+        if (rm?.category_id) resolvedCategoryId = rm.category_id;
+      }
+
+      const { data: collision } = await adminDb
+        .from('bookings')
+        .select('id, booking_status, hold_expires_at, created_at')
+        .eq('tenant_id', tenantId)
+        .eq('room_id', resolvedRoomId)
+        .neq('booking_status', 'cancelled')
+        .lt('check_in_date', checkOut)
+        .gt('check_out_date', checkIn);
+
+      const now = Date.now();
+      const activeCollision = (collision || []).find((b) => {
+        if (b.booking_status === 'confirmed' || b.booking_status === 'checked_in') return true;
+        if (b.booking_status === 'pending') {
+          if (b.hold_expires_at) return new Date(b.hold_expires_at).getTime() > now;
+          return now - new Date(b.created_at).getTime() < 15 * 60 * 1000;
+        }
+        return false;
+      });
+
+      if (activeCollision) {
+        return {
+          success: false,
+          error: 'This room was just reserved by another guest for the selected dates. Please choose another option.',
+        };
+      }
     }
 
     const cleanMobile = guestMobile.replace(/[^\d+]/g, '');
 
-    const { data: booking, error: insertError } = await supabase
+    // 3. Compute hold TTL and initial balances based on payment policy
+    const holdExpiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    let initialBookingStatus: 'pending' | 'confirmed' = 'pending';
+    let initialPaymentStatus: 'pending' | 'paid' | 'partially_paid' = 'pending';
+    let initialPaid = 0;
+    let initialBalance = totalAmount;
+
+    if (paymentPolicy === 'PAY_AT_PROPERTY') {
+      initialBookingStatus = 'confirmed';
+      initialPaymentStatus = 'pending';
+      initialPaid = 0;
+      initialBalance = totalAmount;
+    } else if (paymentPolicy === 'ADVANCE') {
+      initialBookingStatus = 'pending';
+      initialPaymentStatus = 'pending';
+      initialPaid = paidAmount > 0 ? paidAmount : Math.round(totalAmount * 0.5);
+      initialBalance = totalAmount - initialPaid;
+    } else {
+      // FULL_PAYMENT
+      initialBookingStatus = 'pending';
+      initialPaymentStatus = 'pending';
+      initialPaid = 0;
+      initialBalance = totalAmount;
+    }
+
+    const insertPayload: Record<string, unknown> = {
+      tenant_id: tenantId,
+      room_id: resolvedRoomId,
+      category_id: resolvedCategoryId,
+      user_id: user?.id || null,
+      guest_name: guestName.trim(),
+      guest_mobile_number: cleanMobile,
+      guest_email: guestEmail?.trim() || null,
+      check_in_date: checkIn,
+      check_out_date: checkOut,
+      num_adults: adults,
+      num_children: children,
+      total_amount_inr: totalAmount,
+      paid_amount_inr: initialPaid,
+      balance_amount_inr: initialBalance,
+      booking_status: initialBookingStatus,
+      payment_status: initialPaymentStatus,
+      hold_expires_at: holdExpiresAt,
+      special_requests: specialRequests?.trim() || null,
+    };
+
+    let { data: booking, error: insertError } = await adminDb
       .from('bookings')
-      .insert({
+      .insert(insertPayload)
+      .select()
+      .single();
+
+    if (insertError) {
+      // Fallback if newly added columns are not yet in the DB schema
+      const fallbackPayload = {
         tenant_id: tenantId,
-        room_id: roomId,
+        room_id: resolvedRoomId,
         user_id: user?.id || null,
         guest_name: guestName.trim(),
         guest_mobile_number: cleanMobile,
@@ -246,15 +388,50 @@ export async function createReservation(payload: {
         num_adults: adults,
         num_children: children,
         total_amount_inr: totalAmount,
-        booking_status: 'pending',
-        payment_status: 'pending',
+        booking_status: initialBookingStatus,
+        payment_status: initialPaymentStatus,
         special_requests: specialRequests?.trim() || null,
-      })
-      .select()
-      .single();
+      };
+      const retry = await adminDb
+        .from('bookings')
+        .insert(fallbackPayload)
+        .select()
+        .single();
+      if (retry.error) throw retry.error;
+      booking = retry.data;
+    }
 
-    if (insertError) {
-      throw insertError;
+    // 4. Send Confirmation Email if Pay At Property
+    if (paymentPolicy === 'PAY_AT_PROPERTY' && booking && guestEmail) {
+      const { data: tenant } = await adminDb
+        .from('tenants')
+        .select('name, contact_phone')
+        .eq('id', tenantId)
+        .single();
+
+      const diffMs = new Date(checkOut).getTime() - new Date(checkIn).getTime();
+      const nights = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+
+      try {
+        await notifications.sendBookingConfirmationEmail({
+          to: guestEmail,
+          guestName: guestName.trim(),
+          bookingReference: (booking as Booking).id.slice(0, 8).toUpperCase(),
+          resortName: tenant?.name || 'Resort Desk',
+          categoryName: 'Standard Accommodation',
+          checkInDate: checkIn,
+          checkOutDate: checkOut,
+          nights,
+          adults,
+          children,
+          totalAmountInr: totalAmount,
+          paymentStatus: 'Pay At Property (Balance: ₹' + initialBalance.toLocaleString('en-IN') + ')',
+          guestPortalUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/login`,
+          contactPhone: tenant?.contact_phone || undefined,
+        });
+      } catch (notifErr) {
+        console.warn('[Confirmation Email Notice]:', notifErr);
+      }
     }
 
     return {
@@ -304,6 +481,29 @@ export async function updateBookingStatus(
 
     if (updateError) {
       throw updateError;
+    }
+
+    // P0.1 Housekeeping Trigger: If checked out, immediately mark room dirty
+    if (newStatus === 'checked_out') {
+      try {
+        const { data: bData } = await supabase
+          .from('bookings')
+          .select('room_id')
+          .eq('id', bookingId)
+          .single();
+
+        if (bData?.room_id) {
+          await supabase
+            .from('rooms')
+            .update({
+              status: 'dirty',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', bData.room_id);
+        }
+      } catch (rErr) {
+        console.warn('[Checkout Room Dirty Notice]:', rErr);
+      }
     }
 
     // Direct audit trail entry
@@ -377,7 +577,7 @@ export async function reassignBookingRoom(
     // 2. Check if new room exists and belongs to tenant
     const { data: room, error: roomErr } = await supabase
       .from('rooms')
-      .select('name')
+      .select('name, status')
       .eq('id', newRoomId)
       .eq('tenant_id', tenantId)
       .single();
@@ -386,22 +586,48 @@ export async function reassignBookingRoom(
       return { success: false, error: 'Target room does not exist.' };
     }
 
+    // 2b. Housekeeping & Out-of-Order Check for immediate check-in:
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (booking.check_in_date <= todayStr) {
+      if (room.status === 'dirty' || room.status === 'cleaning') {
+        return {
+          success: false,
+          error: `Cannot assign ${room.name}: Room is currently marked "${room.status.toUpperCase()}". Please complete housekeeping cleaning and inspection first.`,
+        };
+      }
+      if (room.status === 'maintenance' || room.status === 'blocked') {
+        return {
+          success: false,
+          error: `Cannot assign ${room.name}: Room is currently marked "${room.status.toUpperCase()}".`,
+        };
+      }
+    }
+
     // 3. Prevent double-booking / collision in the new target room for this guest's dates
     const { data: collision } = await supabase
       .from('bookings')
-      .select('id, guest_name')
+      .select('id, guest_name, booking_status, hold_expires_at, created_at')
       .eq('tenant_id', tenantId)
       .eq('room_id', newRoomId)
       .neq('id', bookingId)
       .neq('booking_status', 'cancelled')
       .lt('check_in_date', booking.check_out_date)
-      .gt('check_out_date', booking.check_in_date)
-      .limit(1);
+      .gt('check_out_date', booking.check_in_date);
 
-    if (collision && collision.length > 0) {
+    const now = Date.now();
+    const activeCollision = (collision || []).find((c) => {
+      if (c.booking_status === 'confirmed' || c.booking_status === 'checked_in') return true;
+      if (c.booking_status === 'pending') {
+        if (c.hold_expires_at) return new Date(c.hold_expires_at).getTime() > now;
+        return now - new Date(c.created_at).getTime() < 15 * 60 * 1000;
+      }
+      return false;
+    });
+
+    if (activeCollision) {
       return {
         success: false,
-        error: `Cannot reassign: ${room.name} is already booked by ${collision[0].guest_name} for these dates.`,
+        error: `Cannot assign: ${room.name} is already booked by ${activeCollision.guest_name} for these dates.`,
       };
     }
 
@@ -444,6 +670,104 @@ export async function reassignBookingRoom(
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to reassign room.';
     return { success: false, error: message };
+  }
+}
+
+/**
+ * Assign Physical Room Unit to an unassigned reservation (Category-First Flow)
+ */
+export async function assignBookingRoom(
+  bookingId: string,
+  tenantId: string,
+  newRoomId: string
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  return reassignBookingRoom(bookingId, tenantId, newRoomId);
+}
+
+/**
+ * Confirm Pay-At-Property Reservation
+ * Transitions pending hold directly to confirmed reservation with payment_status = pending
+ * Dispatches formal booking confirmation email.
+ */
+export async function confirmPayAtPropertyReservation(
+  bookingId: string,
+  tenantId: string
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    const adminDb = createAdminClient();
+    const { data: booking, error } = await adminDb
+      .from('bookings')
+      .select('*, tenant:tenants(name, contact_phone)')
+      .eq('id', bookingId)
+      .single();
+
+    if (error || !booking) {
+      return { success: false, error: 'Booking not found.' };
+    }
+
+    const total = Number(booking.total_amount_inr || 0);
+
+    const { error: updErr } = await adminDb
+      .from('bookings')
+      .update({
+        booking_status: 'confirmed',
+        payment_status: 'pending',
+        paid_amount_inr: 0,
+        balance_amount_inr: total,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', bookingId);
+
+    if (updErr) {
+      // Fallback without new columns
+      await adminDb
+        .from('bookings')
+        .update({
+          booking_status: 'confirmed',
+          payment_status: 'pending',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', bookingId);
+    }
+
+    // Send confirmation email
+    if (booking.guest_email) {
+      const diffMs = new Date(booking.check_out_date).getTime() - new Date(booking.check_in_date).getTime();
+      const nights = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+
+      try {
+        await notifications.sendBookingConfirmationEmail({
+          to: booking.guest_email,
+          guestName: booking.guest_name,
+          bookingReference: booking.id.slice(0, 8).toUpperCase(),
+          resortName: (booking as any).tenant?.name || 'Resort Desk',
+          categoryName: 'Confirmed Reservation',
+          checkInDate: booking.check_in_date,
+          checkOutDate: booking.check_out_date,
+          nights,
+          adults: booking.num_adults,
+          children: booking.num_children,
+          totalAmountInr: total,
+          paymentStatus: 'Pay At Property (Balance: ₹' + total.toLocaleString('en-IN') + ')',
+          guestPortalUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/login`,
+          contactPhone: (booking as any).tenant?.contact_phone || undefined,
+        });
+      } catch (err) {
+        console.warn('[Confirmation Email Error]:', err);
+      }
+    }
+
+    revalidatePath('/bookings');
+    revalidatePath('/dashboard');
+    revalidatePath('/calendar');
+
+    return {
+      success: true,
+      message: `Reservation #${bookingId.slice(0, 8).toUpperCase()} confirmed. Balance due at property: ₹${total.toLocaleString('en-IN')}.`,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Failed to confirm reservation.';
+    return { success: false, error: msg };
   }
 }
 

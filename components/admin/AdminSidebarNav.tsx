@@ -8,11 +8,13 @@ import SignOutButton from './SignOutButton';
 interface AdminSidebarNavProps {
   resortName?: string;
   resortSubdomain?: string;
+  userRole?: 'superadmin' | 'tenant_admin' | 'staff' | 'guest';
 }
 
 export default function AdminSidebarNav({
   resortName = 'Resort PMS',
   resortSubdomain = 'raigad-tropical',
+  userRole = 'tenant_admin',
 }: AdminSidebarNavProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -99,6 +101,13 @@ export default function AdminSidebarNav({
     },
   ];
 
+  const allowedLinks = navLinks.filter((link) => {
+    if (userRole === 'staff') {
+      return ['/dashboard', '/bookings', '/calendar', '/inventory'].includes(link.href);
+    }
+    return true;
+  });
+
   return (
     <>
       {/* DESKTOP FIXED SIDEBAR */}
@@ -115,14 +124,14 @@ export default function AdminSidebarNav({
                   {resortName}
                 </p>
                 <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-400">
-                  Resort Admin Suite
+                  {userRole === 'staff' ? 'Front Desk Suite' : 'Resort Admin Suite'}
                 </p>
               </div>
             </div>
 
             {/* Navigation links */}
             <nav className="space-y-1.5 px-4 py-6">
-              {navLinks.map((item) => {
+              {allowedLinks.map((item) => {
                 const isActive =
                   pathname === item.href ||
                   (item.href !== '/dashboard' && pathname.startsWith(item.href));
@@ -208,7 +217,7 @@ export default function AdminSidebarNav({
               </div>
 
               <nav className="mt-4 space-y-1.5">
-                {navLinks.map((item) => (
+                {allowedLinks.map((item) => (
                   <Link
                     key={item.name}
                     href={item.href}

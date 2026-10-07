@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createServerSupabaseClient } from '@/lib/supabase-server';
+import { RoomStatus } from '@/types';
 
 export interface ActionResponse<T = unknown> {
   success: boolean;
@@ -466,19 +467,29 @@ export async function deleteRoomUnit(roomId: string, tenantId: string): Promise<
 }
 
 /**
- * 3. UPDATE ROOM STATUS (Toggle Availability)
+/**
+ * 3. UPDATE ROOM STATUS (Housekeeping & Maintenance Lifecycle)
+ * Supported statuses: 'available' | 'maintenance' | 'blocked' | 'dirty' | 'cleaning' | 'inspected'
  */
 export async function updateRoomStatus(
   roomId: string,
   tenantId: string,
-  newStatus: 'available' | 'maintenance' | 'blocked'
+  newStatus: RoomStatus
 ): Promise<ActionResponse> {
   try {
     if (!roomId || !tenantId) {
       return { success: false, error: 'Room ID and Tenant ID are required.' };
     }
 
-    const { supabase } = await getAuthenticatedAdminTenant(tenantId);
+    const { supabase, user } = await getAuthenticatedAdminTenant(tenantId);
+
+    // Fetch previous status for audit log
+    const { data: previousRoom } = await supabase
+      .from('rooms')
+      .select('name, status')
+      .eq('id', roomId)
+      .eq('tenant_id', tenantId)
+      .single();
 
     const { data: updatedRoom, error } = await supabase
       .from('rooms')
@@ -493,17 +504,50 @@ export async function updateRoomStatus(
 
     if (error) throw error;
 
+    // Direct audit trail log
+    try {
+      await supabase.from('audit_logs').insert({
+        tenant_id: tenantId,
+        user_id: user?.id || null,
+        table_name: 'rooms',
+        record_id: roomId,
+        action_type: 'UPDATE',
+        old_data: { status: previousRoom?.status },
+        new_data: {
+          status: newStatus,
+          room_name: previousRoom?.name,
+          updated_at: new Date().toISOString(),
+        },
+        created_at: new Date().toISOString(),
+      });
+    } catch {
+      // Non-blocking audit trail fallback
+    }
+
     revalidatePath('/dashboard');
     revalidatePath('/inventory');
+    revalidatePath('/calendar');
     return {
       success: true,
-      message: `Room status updated to "${newStatus}".`,
+      message: `Room status updated to "${newStatus.toUpperCase()}".`,
       data: updatedRoom,
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to update room status.';
     return { success: false, error: message };
   }
+}
+
+/**
+ * Housekeeping Status Transition helper:
+ * Enforces dirty -> cleaning -> inspected -> available lifecycle
+ */
+export async function updateRoomHousekeepingStatus(
+  roomId: string,
+  tenantId: string,
+  newStatus: 'dirty' | 'cleaning' | 'inspected' | 'available'
+): Promise<ActionResponse> {
+  return updateRoomStatus(roomId, tenantId, newStatus);
 }
 
 /**

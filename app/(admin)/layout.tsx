@@ -23,13 +23,18 @@ export default async function AdminLayout({
 
     const adminDb = createAdminClient();
     let tenantId: string | null = null;
+    let userRole: 'superadmin' | 'tenant_admin' | 'staff' | 'guest' = 'tenant_admin';
 
     if (user) {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('tenant_id')
+        .select('tenant_id, role')
         .eq('id', user.id)
         .maybeSingle();
+
+      if (profile?.role) {
+        userRole = profile.role as 'superadmin' | 'tenant_admin' | 'staff' | 'guest';
+      }
 
       if (profile?.tenant_id && UUID_REGEX.test(profile.tenant_id)) {
         tenantId = profile.tenant_id;
@@ -73,7 +78,7 @@ export default async function AdminLayout({
   return (
     <div className="min-h-screen bg-stone-50 font-sans text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-100">
       {/* 1. Sleek Left Sidebar Navigation */}
-      <AdminSidebarNav resortName={resortName} resortSubdomain={resortSubdomain} />
+      <AdminSidebarNav resortName={resortName} resortSubdomain={resortSubdomain} userRole={userRole} />
 
       {/* 2. Main Admin Workspace Container */}
       <div className="lg:pl-72 flex min-h-screen flex-col">

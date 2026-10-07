@@ -29,6 +29,10 @@ export default async function ResortWebsiteCmsPage() {
     .eq('id', user.id)
     .maybeSingle();
 
+  if (profile?.role === 'staff') {
+    redirect('/dashboard');
+  }
+
   let tenantId = profile?.tenant_id && UUID_REGEX.test(profile.tenant_id) ? profile.tenant_id : undefined;
   if (!tenantId) {
     const envId = process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID;
