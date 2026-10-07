@@ -466,39 +466,70 @@ export default function BookingsListClient({
 
                       {/* 4. ASSIGNED ROOM & LIVE STATUS */}
                       <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-semibold text-neutral-900 dark:text-neutral-100">
-                            {room?.name || 'Unit #' + b.room_id.slice(0, 5)}
-                          </span>
-                          {isRoomInMaintenance ? (
-                            <span className="rounded-sm bg-stone-100 px-1.5 py-0.5 text-[9px] font-bold text-stone-600 border border-stone-300">
-                              🔧 Maint
+                        {!b.room_id ? (
+                          <div className="space-y-1">
+                            <span className="inline-block rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-300">
+                              ⚠️ Unassigned Unit
                             </span>
-                          ) : isRoomCurrentlyInHouse ? (
-                            <span className="rounded-sm bg-rose-50 px-1.5 py-0.5 text-[9px] font-bold text-rose-700 border border-rose-200">
-                              🔴 In-House
-                            </span>
-                          ) : (
-                            <span className="rounded-sm bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 border border-emerald-200">
-                              🟢 Ready
-                            </span>
-                          )}
-                        </div>
+                            <div>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenReassign(b)}
+                                className="rounded-md bg-emerald-600 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-emerald-500 shadow-2xs"
+                              >
+                                + Assign Unit
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-semibold text-neutral-900 dark:text-neutral-100">
+                                {room?.name || 'Unit #' + b.room_id.slice(0, 5)}
+                              </span>
+                              {isRoomInMaintenance ? (
+                                <span className="rounded-sm bg-stone-100 px-1.5 py-0.5 text-[9px] font-bold text-stone-600 border border-stone-300">
+                                  🔧 Maint
+                                </span>
+                              ) : isRoomCurrentlyInHouse ? (
+                                <span className="rounded-sm bg-rose-50 px-1.5 py-0.5 text-[9px] font-bold text-rose-700 border border-rose-200">
+                                  🔴 In-House
+                                </span>
+                              ) : room?.status === 'dirty' ? (
+                                <span className="rounded-sm bg-rose-50 px-1.5 py-0.5 text-[9px] font-bold text-rose-700 border border-rose-300">
+                                  🧹 Dirty
+                                </span>
+                              ) : room?.status === 'cleaning' ? (
+                                <span className="rounded-sm bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 border border-amber-300">
+                                  🧼 Cleaning
+                                </span>
+                              ) : room?.status === 'inspected' ? (
+                                <span className="rounded-sm bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold text-blue-700 border border-blue-300">
+                                  🔍 Inspected
+                                </span>
+                              ) : (
+                                <span className="rounded-sm bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 border border-emerald-200">
+                                  🟢 Ready
+                                </span>
+                              )}
+                            </div>
 
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-[11px] text-neutral-400">
-                            {room?.room_type || 'Accommodation'}
-                          </span>
-                          {b.booking_status !== 'checked_out' && b.booking_status !== 'cancelled' && (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenReassign(b)}
-                              className="text-[10px] font-bold text-blue-600 hover:underline dark:text-blue-400"
-                            >
-                              ⇄ Change Unit
-                            </button>
-                          )}
-                        </div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-[11px] text-neutral-400">
+                                {room?.room_type || 'Accommodation'}
+                              </span>
+                              {b.booking_status !== 'checked_out' && b.booking_status !== 'cancelled' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenReassign(b)}
+                                  className="text-[10px] font-bold text-blue-600 hover:underline dark:text-blue-400"
+                                >
+                                  ⇄ Change Unit
+                                </button>
+                              )}
+                            </div>
+                          </>
+                        )}
                       </td>
 
                       {/* 5. DATES */}
@@ -507,12 +538,22 @@ export default function BookingsListClient({
                         <div>Out: {b.check_out_date}</div>
                       </td>
 
-                      {/* 6. AMOUNT */}
+                      {/* 6. AMOUNT & BALANCE */}
                       <td className="py-3.5 px-4 text-right font-mono font-bold text-neutral-800 dark:text-neutral-200">
                         ₹{Number(b.total_amount_inr).toLocaleString()}
-                        <div className="text-[10px] uppercase font-normal text-stone-400">
-                          {b.payment_status}
-                        </div>
+                        {b.balance_amount_inr !== undefined && Number(b.balance_amount_inr) > 0 ? (
+                          <div className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                            Due: ₹{Number(b.balance_amount_inr).toLocaleString()}
+                          </div>
+                        ) : b.payment_status === 'paid' ? (
+                          <div className="text-[10px] font-bold text-emerald-600">
+                            ✓ Fully Paid
+                          </div>
+                        ) : (
+                          <div className="text-[10px] uppercase font-normal text-stone-400">
+                            {b.payment_status}
+                          </div>
+                        )}
                       </td>
 
                       {/* 7. STATUS */}

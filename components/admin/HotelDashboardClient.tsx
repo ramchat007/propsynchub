@@ -3,7 +3,7 @@
 import React, { useState, useTransition, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Tenant, Room, Booking } from '@/types';
+import { Tenant, Room, Booking, RoomStatus } from '@/types';
 import {
   createReservation,
   updateBookingStatus,
@@ -13,7 +13,16 @@ import { updateRoomStatus } from '@/app/actions/inventory';
 import { ToastContainer, ToastMessage } from './Toast';
 
 export interface RoomOccupancyInfo {
-  state: 'occupied' | 'arriving_today' | 'departing_today' | 'maintenance' | 'blocked' | 'available';
+  state:
+    | 'occupied'
+    | 'arriving_today'
+    | 'departing_today'
+    | 'maintenance'
+    | 'blocked'
+    | 'available'
+    | 'dirty'
+    | 'cleaning'
+    | 'inspected';
   booking?: Booking;
   nextBooking?: Booking;
   recentCheckout?: Booking;
@@ -164,6 +173,33 @@ export default function HotelDashboardClient({
         return;
       }
 
+      if (room.status === 'dirty') {
+        map.set(room.id, {
+          state: 'dirty',
+          nextBooking,
+          recentCheckout,
+        });
+        return;
+      }
+
+      if (room.status === 'cleaning') {
+        map.set(room.id, {
+          state: 'cleaning',
+          nextBooking,
+          recentCheckout,
+        });
+        return;
+      }
+
+      if (room.status === 'inspected') {
+        map.set(room.id, {
+          state: 'inspected',
+          nextBooking,
+          recentCheckout,
+        });
+        return;
+      }
+
       if (room.status === 'maintenance') {
         map.set(room.id, {
           state: 'maintenance',
@@ -273,7 +309,7 @@ export default function HotelDashboardClient({
     });
   };
 
-  const handleToggleRoomStatus = (room: Room, newStatus: 'available' | 'maintenance' | 'blocked') => {
+  const handleToggleRoomStatus = (room: Room, newStatus: RoomStatus) => {
     startTransition(async () => {
       const res = await updateRoomStatus(room.id, tenantId, newStatus);
       if (res.success) {
@@ -555,6 +591,9 @@ export default function HotelDashboardClient({
               const isOccupied = occupancy.state === 'occupied' || occupancy.state === 'departing_today';
               const isArriving = occupancy.state === 'arriving_today';
               const isMaintenance = occupancy.state === 'maintenance' || occupancy.state === 'blocked';
+              const isDirty = occupancy.state === 'dirty';
+              const isCleaning = occupancy.state === 'cleaning';
+              const isInspected = occupancy.state === 'inspected';
               const isAvailable = occupancy.state === 'available';
 
               return (
@@ -565,6 +604,12 @@ export default function HotelDashboardClient({
                       ? 'border-rose-200 bg-white dark:border-rose-900/60 dark:bg-neutral-900'
                       : isArriving
                       ? 'border-amber-200 bg-white dark:border-amber-900/60 dark:bg-neutral-900'
+                      : isDirty
+                      ? 'border-rose-300 bg-rose-50/30 dark:border-rose-900 dark:bg-rose-950/20'
+                      : isCleaning
+                      ? 'border-amber-300 bg-amber-50/30 dark:border-amber-900 dark:bg-amber-950/20'
+                      : isInspected
+                      ? 'border-blue-300 bg-blue-50/30 dark:border-blue-900 dark:bg-blue-950/20'
                       : isMaintenance
                       ? 'border-stone-300 bg-stone-50 dark:border-neutral-800 dark:bg-neutral-900/50'
                       : 'border-emerald-200 bg-white dark:border-emerald-900/60 dark:bg-neutral-900'
@@ -591,6 +636,21 @@ export default function HotelDashboardClient({
                       {isArriving && (
                         <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-300">
                           🟡 Arriving Today
+                        </span>
+                      )}
+                      {isDirty && (
+                        <span className="rounded-md bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-800 border border-rose-300 dark:bg-rose-950 dark:text-rose-300">
+                          🧹 Dirty
+                        </span>
+                      )}
+                      {isCleaning && (
+                        <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-300 dark:bg-amber-950 dark:text-amber-300">
+                          🧼 Cleaning
+                        </span>
+                      )}
+                      {isInspected && (
+                        <span className="rounded-md bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800 border border-blue-300 dark:bg-blue-950 dark:text-blue-300">
+                          🔍 Inspected
                         </span>
                       )}
                       {isAvailable && nextB && (
@@ -750,6 +810,39 @@ export default function HotelDashboardClient({
                           </button>
                         )}
                       </>
+                    )}
+
+                    {isDirty && (
+                      <button
+                        type="button"
+                        onClick={() => handleToggleRoomStatus(room, 'cleaning')}
+                        disabled={isPending}
+                        className="w-full rounded-lg bg-amber-600 py-1.5 text-center text-[11px] font-bold text-white hover:bg-amber-500 shadow-2xs"
+                      >
+                        🧼 Start Cleaning
+                      </button>
+                    )}
+
+                    {isCleaning && (
+                      <button
+                        type="button"
+                        onClick={() => handleToggleRoomStatus(room, 'inspected')}
+                        disabled={isPending}
+                        className="w-full rounded-lg bg-blue-600 py-1.5 text-center text-[11px] font-bold text-white hover:bg-blue-500 shadow-2xs"
+                      >
+                        🔍 Mark Inspected
+                      </button>
+                    )}
+
+                    {isInspected && (
+                      <button
+                        type="button"
+                        onClick={() => handleToggleRoomStatus(room, 'available')}
+                        disabled={isPending}
+                        className="w-full rounded-lg bg-emerald-600 py-1.5 text-center text-[11px] font-bold text-white hover:bg-emerald-500 shadow-2xs"
+                      >
+                        ✨ Mark Clean &amp; Ready
+                      </button>
                     )}
 
                     {isMaintenance && (
