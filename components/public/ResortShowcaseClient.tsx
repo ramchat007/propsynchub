@@ -30,7 +30,6 @@ interface ShowcaseSettings {
 export default function ResortShowcaseClient({
   tenant,
   rooms,
-  categories: _categories,
   tenantParam,
 }: ResortShowcaseClientProps) {
   // Extract website settings with safe fallbacks
@@ -274,6 +273,55 @@ export default function ResortShowcaseClient({
                 >
                   Check Rates ➔
                 </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* =================================================================== */}
+      {/* 2.1 DIRECT BOOKING PERKS (RATE PARITY & COMMISSION-FREE VALUE)     */}
+      {/* =================================================================== */}
+      <section className="border-y border-stone-200/80 bg-white py-5 shadow-xs dark:border-neutral-800 dark:bg-neutral-900/60">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-2 gap-4 text-center sm:grid-cols-4 sm:gap-6">
+            <div className="flex flex-col items-center gap-1.5 sm:flex-row sm:justify-center sm:gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-base text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
+                🏷️
+              </span>
+              <div className="text-left">
+                <p className="text-xs font-bold text-stone-900 dark:text-white">Best Rate Guarantee</p>
+                <p className="text-[11px] text-stone-500">Zero OTA markups or hidden fees</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center gap-1.5 sm:flex-row sm:justify-center sm:gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-base text-amber-600 dark:bg-amber-950/60 dark:text-amber-400">
+                🍳
+              </span>
+              <div className="text-left">
+                <p className="text-xs font-bold text-stone-900 dark:text-white">Complimentary Perks</p>
+                <p className="text-[11px] text-stone-500">Welcome drinks &amp; priority breakfast</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center gap-1.5 sm:flex-row sm:justify-center sm:gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-base text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
+                ⏱️
+              </span>
+              <div className="text-left">
+                <p className="text-xs font-bold text-stone-900 dark:text-white">Flexible Check-in</p>
+                <p className="text-[11px] text-stone-500">Early check-in upon availability</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center gap-1.5 sm:flex-row sm:justify-center sm:gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-base text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
+                💬
+              </span>
+              <div className="text-left">
+                <p className="text-xs font-bold text-stone-900 dark:text-white">Direct Host Support</p>
+                <p className="text-[11px] text-stone-500">Instant WhatsApp concierge</p>
               </div>
             </div>
           </div>
@@ -638,6 +686,33 @@ export default function ResortShowcaseClient({
           </div>
         </div>
       </footer>
+
+      {/* =================================================================== */}
+      {/* 8. MOBILE STICKY DIRECT BOOKING DOCK (Max conversion on mobile)   */}
+      {/* =================================================================== */}
+      <div className="fixed bottom-0 inset-x-0 z-40 border-t border-stone-200 bg-white/95 px-4 py-3 backdrop-blur-md md:hidden dark:border-neutral-800 dark:bg-neutral-900/95">
+        <div className="flex items-center gap-3">
+          <a
+            href={`https://wa.me/${cleanWhatsApp}?text=Hi%20${encodeURIComponent(tenant.name)}%2C%20I%20am%20interested%20in%20booking%20a%20stay.`}
+            target="_blank"
+            rel="noreferrer"
+            className="flex h-11 w-11 items-center justify-center rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-700 shadow-xs dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400"
+            title="Chat on WhatsApp"
+          >
+            <span className="text-lg">💬</span>
+          </a>
+          <Link
+            href={bookingUrl}
+            style={{ backgroundColor: primaryColor }}
+            className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl text-xs font-bold text-white shadow-md transition hover:brightness-110 active:scale-95"
+          >
+            <span>Book Direct (Best Rate)</span>
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }

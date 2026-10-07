@@ -4,7 +4,11 @@ import React, { useState, useTransition } from 'react';
 import { Room, RoomCategory, Pricing, Tenant } from '@/types';
 import {
   addRoomCategory,
+  editRoomCategory,
+  deleteRoomCategory,
   addRoom,
+  editRoomUnit,
+  deleteRoomUnit,
   updateRoomStatus,
   updateRoomPricing,
   initializeDemoResort,
@@ -24,7 +28,6 @@ export default function InventoryDashboardClient({
   initialCategories,
   initialRooms,
   initialPricing,
-  userRole: _userRole = 'tenant_admin',
 }: InventoryDashboardClientProps) {
   // Navigation & Filter state
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
@@ -34,6 +37,8 @@ export default function InventoryDashboardClient({
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
   const [preselectedCategory, setPreselectedCategory] = useState<string>('');
+  const [editingCategory, setEditingCategory] = useState<RoomCategory | null>(null);
+  const [editingRoomUnit, setEditingRoomUnit] = useState<Room | null>(null);
 
   // Edit Pricing Modal state
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
@@ -146,6 +151,80 @@ export default function InventoryDashboardClient({
         setIsRoomModalOpen(false);
       } else {
         addToast('error', res.error || 'Failed to add room.');
+      }
+    });
+  }
+
+  // Handle Edit Category Submission
+  function handleUpdateCategory(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!editingCategory) return;
+    const formData = new FormData(e.currentTarget);
+    formData.set('tenantId', tenantId);
+    formData.set('categoryId', editingCategory.id);
+
+    setPendingActionId('edit-category');
+    startTransition(async () => {
+      const res = await editRoomCategory(formData);
+      setPendingActionId(null);
+      if (res.success) {
+        addToast('success', res.message || 'Category updated successfully.');
+        setEditingCategory(null);
+      } else {
+        addToast('error', res.error || 'Failed to update category.');
+      }
+    });
+  }
+
+  // Handle Delete Category
+  function handleDeleteCategory(cat: RoomCategory) {
+    if (!confirm(`Are you sure you want to delete category "${cat.name}"?`)) return;
+
+    setPendingActionId(`del-cat-${cat.id}`);
+    startTransition(async () => {
+      const res = await deleteRoomCategory(cat.id, tenantId);
+      setPendingActionId(null);
+      if (res.success) {
+        addToast('success', res.message || 'Category removed.');
+      } else {
+        addToast('error', res.error || 'Failed to delete category.');
+      }
+    });
+  }
+
+  // Handle Edit Room Unit Submission
+  function handleUpdateRoomUnit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!editingRoomUnit) return;
+    const formData = new FormData(e.currentTarget);
+    formData.set('tenantId', tenantId);
+    formData.set('roomId', editingRoomUnit.id);
+
+    setPendingActionId('edit-unit');
+    startTransition(async () => {
+      const res = await editRoomUnit(formData);
+      setPendingActionId(null);
+      if (res.success) {
+        addToast('success', res.message || 'Room unit updated.');
+        setEditingRoomUnit(null);
+      } else {
+        addToast('error', res.error || 'Failed to edit room unit.');
+      }
+    });
+  }
+
+  // Handle Delete Room Unit
+  function handleDeleteRoomUnit(room: Room) {
+    if (!confirm(`Are you sure you want to delete room unit "${room.name}"?`)) return;
+
+    setPendingActionId(`del-room-${room.id}`);
+    startTransition(async () => {
+      const res = await deleteRoomUnit(room.id, tenantId);
+      setPendingActionId(null);
+      if (res.success) {
+        addToast('success', res.message || 'Room unit deleted.');
+      } else {
+        addToast('error', res.error || 'Failed to delete room unit.');
       }
     });
   }
@@ -403,16 +482,35 @@ export default function InventoryDashboardClient({
                     </span>
                   </div>
                 )}
+                {catInfo && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingCategory(catInfo)}
+                    className="rounded-lg border border-neutral-300 bg-white px-2.5 py-1 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
+                  >
+                    ✏️ Edit Category
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
                     setPreselectedCategory(categoryName);
                     setIsRoomModalOpen(true);
                   }}
-                  className="rounded-lg border border-neutral-300 bg-white px-2.5 py-1 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
+                  className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-500 shadow-2xs"
                 >
                   + Add Unit
                 </button>
+                {catInfo && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteCategory(catInfo)}
+                    title="Delete Category"
+                    className="rounded-lg border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                  >
+                    🗑️
+                  </button>
+                )}
               </div>
             </div>
 
@@ -501,6 +599,25 @@ export default function InventoryDashboardClient({
                               );
                             }
                           )}
+                        </div>
+
+                        {/* Room Unit Actions */}
+                        <div className="flex items-center gap-1.5 border-l border-neutral-200 pl-3 dark:border-neutral-800">
+                          <button
+                            type="button"
+                            onClick={() => setEditingRoomUnit(room)}
+                            className="rounded-lg border border-neutral-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
+                          >
+                            ✏️ Edit Unit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRoomUnit(room)}
+                            title="Delete Room Unit"
+                            className="rounded-lg border border-rose-200 px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                          >
+                            🗑️
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -828,6 +945,277 @@ export default function InventoryDashboardClient({
                   {isPending && pendingActionId === `pricing-${editingRoom.id}`
                     ? 'Saving...'
                     : 'Update Pricing'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL 4: EDIT ROOM CATEGORY */}
+      {/* ===================================================================== */}
+      {editingCategory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
+              <div>
+                <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+                  Edit Room Category
+                </h3>
+                <p className="text-xs text-neutral-500">{editingCategory.name}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingCategory(null)}
+                className="text-neutral-400 hover:text-neutral-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateCategory} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                  Category Name *
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  required
+                  defaultValue={editingCategory.name}
+                  className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                  Description
+                </label>
+                <textarea
+                  name="description"
+                  rows={2}
+                  defaultValue={editingCategory.description || ''}
+                  className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    Base Rate (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    name="basePrice"
+                    min="0"
+                    step="100"
+                    required
+                    defaultValue={editingCategory.base_price_inr}
+                    className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    Extra Pax Rate (₹)
+                  </label>
+                  <input
+                    type="number"
+                    name="extraPaxPrice"
+                    min="0"
+                    step="100"
+                    defaultValue={editingCategory.extra_pax_price_inr}
+                    className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    Max Adults
+                  </label>
+                  <input
+                    type="number"
+                    name="maxAdults"
+                    min="1"
+                    defaultValue={editingCategory.max_adults}
+                    className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    Max Children
+                  </label>
+                  <input
+                    type="number"
+                    name="maxChildren"
+                    min="0"
+                    defaultValue={editingCategory.max_children}
+                    className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end gap-2 border-t border-neutral-100 pt-4 dark:border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingCategory(null)}
+                  className="rounded-xl border border-neutral-300 px-3.5 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isPending && pendingActionId === 'edit-category'}
+                  className="inline-flex items-center rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-emerald-500 disabled:opacity-50"
+                >
+                  {isPending && pendingActionId === 'edit-category' ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL 5: EDIT PHYSICAL ROOM UNIT */}
+      {/* ===================================================================== */}
+      {editingRoomUnit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
+              <div>
+                <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+                  Edit Room Unit
+                </h3>
+                <p className="text-xs text-neutral-500">{editingRoomUnit.name}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingRoomUnit(null)}
+                className="text-neutral-400 hover:text-neutral-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateRoomUnit} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                  Room Name *
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  required
+                  defaultValue={editingRoomUnit.name}
+                  className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    Room Number
+                  </label>
+                  <input
+                    type="text"
+                    name="roomNumber"
+                    defaultValue={editingRoomUnit.room_number || ''}
+                    className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    Category Assignment *
+                  </label>
+                  <select
+                    name="categoryId"
+                    defaultValue={editingRoomUnit.category_id || ''}
+                    className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+                  >
+                    {initialCategories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    Base Rate (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    name="basePrice"
+                    min="0"
+                    step="100"
+                    required
+                    defaultValue={editingRoomUnit.base_price_inr}
+                    className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    Status
+                  </label>
+                  <select
+                    name="status"
+                    defaultValue={editingRoomUnit.status}
+                    className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+                  >
+                    <option value="available">available (Ready / Clean)</option>
+                    <option value="maintenance">maintenance</option>
+                    <option value="blocked">blocked</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    Capacity Adults
+                  </label>
+                  <input
+                    type="number"
+                    name="capacityAdults"
+                    min="1"
+                    defaultValue={editingRoomUnit.capacity_adults}
+                    className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    Capacity Children
+                  </label>
+                  <input
+                    type="number"
+                    name="capacityChildren"
+                    min="0"
+                    defaultValue={editingRoomUnit.capacity_children}
+                    className="mt-1 w-full rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end gap-2 border-t border-neutral-100 pt-4 dark:border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingRoomUnit(null)}
+                  className="rounded-xl border border-neutral-300 px-3.5 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isPending && pendingActionId === 'edit-unit'}
+                  className="inline-flex items-center rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-emerald-500 disabled:opacity-50"
+                >
+                  {isPending && pendingActionId === 'edit-unit' ? 'Saving...' : 'Update Unit'}
                 </button>
               </div>
             </form>

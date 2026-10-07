@@ -23,14 +23,22 @@ export default async function BookingDetailPage({ params }: BookingDetailPagePro
     redirect(`/login?redirectTo=/bookings/${id}`);
   }
 
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
   // 2. Resolve Profile & Tenant Context
   const { data: profile } = await supabase
     .from('profiles')
     .select('tenant_id, role')
     .eq('id', user.id)
-    .single();
+    .maybeSingle();
 
-  const tenantId = profile?.tenant_id || process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID;
+  let tenantId = profile?.tenant_id && UUID_REGEX.test(profile.tenant_id) ? profile.tenant_id : undefined;
+  if (!tenantId) {
+    const envId = process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID;
+    if (envId && UUID_REGEX.test(envId)) {
+      tenantId = envId;
+    }
+  }
 
   // 3. Fetch Booking Ledger Details
   const ledgerRes = await getBookingLedger(id, tenantId);

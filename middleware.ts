@@ -69,6 +69,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/admin') ||
     pathname.startsWith('/dashboard') ||
     pathname.startsWith('/bookings') ||
+    pathname.startsWith('/inventory') ||
     pathname.startsWith('/reports') ||
     pathname.startsWith('/audit-logs') ||
     pathname.startsWith('/settings');

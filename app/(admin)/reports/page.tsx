@@ -1,12 +1,12 @@
 import { redirect } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase';
-import BookingsListClient from '@/components/admin/BookingsListClient';
-import { Booking, Room, Tenant } from '@/types';
+import ReportsDashboardClient from '@/components/admin/ReportsDashboardClient';
+import { Booking, Room, Tenant, IncidentalCharge } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
-export default async function AdminBookingsPage() {
+export default async function AdminReportsPage() {
   const supabase = await createServerSupabaseClient();
 
   // 1. Authenticate user
@@ -15,7 +15,7 @@ export default async function AdminBookingsPage() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect('/login?redirectTo=/bookings');
+    redirect('/login?redirectTo=/reports');
   }
 
   const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -34,7 +34,6 @@ export default async function AdminBookingsPage() {
       tenantId = envId;
     }
   }
-
   const adminDb = createAdminClient();
 
   // Tenant resolution
@@ -72,7 +71,7 @@ export default async function AdminBookingsPage() {
     bookings = (rawBookings as unknown as Booking[]) || [];
   }
 
-  // 4. Fetch Rooms for Display
+  // 4. Fetch Rooms for this Tenant
   let rooms: Room[] = [];
   if (tenantId) {
     const { data: rawRooms } = await adminDb
@@ -83,11 +82,23 @@ export default async function AdminBookingsPage() {
     rooms = (rawRooms as unknown as Room[]) || [];
   }
 
+  // 5. Fetch Incidental Charges for this Tenant
+  let incidentals: IncidentalCharge[] = [];
+  if (tenantId) {
+    const { data: rawIncidentals } = await adminDb
+      .from('incidental_charges')
+      .select('*')
+      .eq('tenant_id', tenantId);
+
+    incidentals = (rawIncidentals as unknown as IncidentalCharge[]) || [];
+  }
+
   return (
-    <BookingsListClient
+    <ReportsDashboardClient
+      tenant={tenant}
       bookings={bookings}
       rooms={rooms}
-      tenant={tenant}
+      incidentals={incidentals}
     />
   );
 }

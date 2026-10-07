@@ -4,9 +4,18 @@
  */
 
 export type UserRole = 'superadmin' | 'tenant_admin' | 'staff' | 'guest';
-export type RoomStatus = 'available' | 'maintenance' | 'blocked';
+export type RoomStatus = 'available' | 'maintenance' | 'blocked' | 'dirty' | 'cleaning' | 'inspected';
 export type BookingStatus = 'pending' | 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled';
 export type PaymentStatus = 'pending' | 'paid' | 'partially_paid' | 'failed' | 'refunded';
+export type PaymentPolicy = 'FULL_PAYMENT' | 'ADVANCE' | 'PAY_AT_PROPERTY';
+
+export interface TenantSettings {
+  payment_policy?: PaymentPolicy;
+  advance_percentage?: number; // e.g. 50 for 50% advance
+  check_in_time?: string;
+  check_out_time?: string;
+  [key: string]: unknown;
+}
 
 export interface Tenant {
   id: string;
@@ -17,7 +26,7 @@ export interface Tenant {
   contact_email?: string | null;
   contact_phone?: string | null;
   is_active: boolean;
-  settings: Record<string, unknown>;
+  settings: TenantSettings;
   razorpay_test_key_id?: string | null;
   razorpay_test_key_secret?: string | null;
   created_at: string;
@@ -83,9 +92,10 @@ export interface Pricing {
 export interface Booking {
   id: string;
   tenant_id: string;
-  room_id: string;
+  room_id?: string | null; // Nullable when reserved by category before physical unit assignment
+  category_id?: string | null;
   user_id?: string | null;
-  guest_mobile_number: string; // Primary identity
+  guest_mobile_number: string;
   guest_name: string;
   guest_email?: string | null;
   check_in_date: string;
@@ -93,14 +103,31 @@ export interface Booking {
   num_adults: number;
   num_children: number;
   total_amount_inr: number;
+  paid_amount_inr?: number;
+  balance_amount_inr?: number;
+  payment_policy?: PaymentPolicy;
   booking_status: BookingStatus;
   payment_status: PaymentStatus;
+  hold_expires_at?: string | null;
   razorpay_order_id?: string | null;
   razorpay_payment_id?: string | null;
   razorpay_signature?: string | null;
   special_requests?: string | null;
   created_at: string;
   updated_at: string;
+  room?: Room | null;
+  category?: RoomCategory | null;
+}
+
+export interface EmailOtpRecord {
+  id: string;
+  tenant_id?: string | null;
+  email: string;
+  otp_hash: string;
+  expires_at: string;
+  attempts: number;
+  used_at?: string | null;
+  created_at: string;
 }
 
 export interface RazorpayPaymentMetadata {

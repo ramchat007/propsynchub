@@ -3,21 +3,8 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getSupabaseBrowserClient } from '@/lib/supabase';
-import {
-  requestMobileOtp,
-  verifyMobileOtp,
-} from '@/app/actions/auth';
-import { PREDEFINED_TEST_OTP, DEFAULT_TEST_PHONE } from '@/lib/constants';
-
-const COUNTRY_CODES = [
-  { code: '+91', country: 'India (IN)', flag: '🇮🇳' },
-  { code: '+1', country: 'USA / Canada (US/CA)', flag: '🇺🇸' },
-  { code: '+44', country: 'United Kingdom (UK)', flag: '🇬🇧' },
-  { code: '+971', country: 'United Arab Emirates (UAE)', flag: '🇦🇪' },
-  { code: '+65', country: 'Singapore (SG)', flag: '🇸🇬' },
-  { code: '+61', country: 'Australia (AU)', flag: '🇦🇺' },
-  { code: '+966', country: 'Saudi Arabia (SA)', flag: '🇸🇦' },
-];
+import { requestEmailOtp, verifyEmailOtpAction } from '@/app/actions/auth';
+import { PREDEFINED_TEST_OTP } from '@/lib/constants';
 
 function LoginForm() {
   const router = useRouter();
@@ -25,12 +12,11 @@ function LoginForm() {
   const explicitRedirect = searchParams.get('callbackUrl') || searchParams.get('redirectTo') || '/dashboard';
   const urlError = searchParams.get('error');
 
-  // Active method: 'whatsapp' (default)
-  const [step, setStep] = useState<'phone' | 'otp'>('phone');
+  // Multi-step flow: 'email' -> 'otp'
+  const [step, setStep] = useState<'email' | 'otp'>('email');
 
-  // Input states
-  const [countryCode, setCountryCode] = useState('+91');
-  const [mobileNumber, setMobileNumber] = useState('');
+  // Inputs
+  const [email, setEmail] = useState('');
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
 
   // Loading & feedback states
@@ -88,38 +74,39 @@ function LoginForm() {
   }
 
   /**
-   * STEP 1: Send OTP to Mobile via WhatsApp (Meta Cloud API)
+   * STEP 1: Request 6-digit Email OTP
    */
-  async function handleSendOtp(e?: React.FormEvent) {
+  async function handleSendEmailOtp(e?: React.FormEvent) {
     if (e) e.preventDefault();
 
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    const cleanNumber = mobileNumber.replace(/\D/g, '');
-    if (!cleanNumber || cleanNumber.length < 7 || cleanNumber.length > 15) {
-      setErrorMessage('Please enter a valid mobile number (7-15 digits).');
+    const cleanEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+      setErrorMessage('Please enter a valid email address.');
       return;
     }
 
     setIsLoading(true);
-    setLoadingText('Dispatching WhatsApp OTP...');
+    setLoadingText('Dispatching secure verification code...');
 
     try {
-      const res = await requestMobileOtp(cleanNumber, countryCode);
+      const res = await requestEmailOtp(cleanEmail);
       if (!res.success) {
-        throw new Error(res.error || 'Failed to send WhatsApp verification code.');
+        throw new Error(res.error || 'Failed to send verification code.');
       }
 
       setStep('otp');
       setResendCooldown(60);
-      setSuccessMessage(res.message || `OTP sent to ${countryCode} ${cleanNumber} via WhatsApp.`);
+      setSuccessMessage(res.message || `Verification code sent to ${cleanEmail}.`);
 
       setTimeout(() => {
         otpInputRefs.current[0]?.focus();
       }, 100);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error sending WhatsApp verification code.';
+      const message = err instanceof Error ? err.message : 'Error sending verification code.';
       setErrorMessage(message);
     } finally {
       setIsLoading(false);
@@ -128,9 +115,9 @@ function LoginForm() {
   }
 
   /**
-   * STEP 2: Verify 6-digit WhatsApp OTP & Establish Session
+   * STEP 2: Verify 6-digit Email OTP & Establish Session
    */
-  async function handleVerifyOtp(e?: React.FormEvent, customToken?: string) {
+  async function handleVerifyEmailOtp(e?: React.FormEvent, customToken?: string) {
     if (e) e.preventDefault();
 
     const otpToken = customToken || otpDigits.join('').trim();
@@ -140,13 +127,13 @@ function LoginForm() {
     }
 
     setIsLoading(true);
-    setLoadingText('Verifying WhatsApp OTP & Signing In...');
+    setLoadingText('Verifying OTP & Establishing Session...');
     setErrorMessage(null);
 
     try {
-      const res = await verifyMobileOtp(mobileNumber, otpToken, countryCode);
+      const res = await verifyEmailOtpAction(email, otpToken);
       if (!res.success || !res.data) {
-        throw new Error(res.error || 'Invalid or expired OTP.');
+        throw new Error(res.error || 'Invalid or expired verification code.');
       }
 
       // Sync browser client state
@@ -156,7 +143,7 @@ function LoginForm() {
           password: res.data.password,
         });
       } catch (clientAuthErr) {
-        console.warn('[PropSyncHub] Client-side auth sync bypassed (server cookies established):', clientAuthErr);
+        console.warn('[PropSyncHub] Client session synced via server cookies:', clientAuthErr);
       }
 
       setSuccessMessage('Authentication verified! Redirecting to dashboard...');
@@ -170,7 +157,7 @@ function LoginForm() {
       const message =
         err instanceof Error
           ? err.message
-          : 'Invalid verification code. Please check your OTP and try again.';
+          : 'Invalid verification code. Please check your code and try again.';
       setErrorMessage(message);
       setIsLoading(false);
       setLoadingText('');
@@ -178,10 +165,10 @@ function LoginForm() {
   }
 
   /**
-   * Quick Test Fill for Local Development
+   * Quick Test Account Fill
    */
-  function handleFillTestAccount() {
-    setMobileNumber(DEFAULT_TEST_PHONE);
+  function handleFillTestAdmin() {
+    setEmail('admin@raigadtropical.com');
     setOtpDigits(['1', '2', '3', '4', '5', '6']);
   }
 
@@ -199,7 +186,7 @@ function LoginForm() {
         otpInputRefs.current[nextIndex]?.focus();
 
         if (newDigits.every((d) => d !== '')) {
-          handleVerifyOtp(undefined, newDigits.join(''));
+          handleVerifyEmailOtp(undefined, newDigits.join(''));
         }
       }
       return;
@@ -215,7 +202,7 @@ function LoginForm() {
     }
 
     if (digit && index === 5 && newDigits.every((d) => d !== '')) {
-      handleVerifyOtp(undefined, newDigits.join(''));
+      handleVerifyEmailOtp(undefined, newDigits.join(''));
     }
   }
 
@@ -245,7 +232,7 @@ function LoginForm() {
         <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-xl sm:p-8 dark:border-neutral-800 dark:bg-neutral-900">
           
           {/* =============================================================== */}
-          {/* OPTION 1: GOOGLE ONE-TAP & SOCIAL LOGIN (100% Free) */}
+          {/* 1. GOOGLE ONE-TAP SIGN-IN */}
           {/* =============================================================== */}
           <div className="space-y-3">
             <button
@@ -282,7 +269,7 @@ function LoginForm() {
               <div className="w-full border-t border-neutral-200 dark:border-neutral-800" />
             </div>
             <span className="relative bg-white px-3 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:bg-neutral-900">
-              Or Sign In with WhatsApp OTP
+              Or Sign In with Email OTP
             </span>
           </div>
 
@@ -304,111 +291,92 @@ function LoginForm() {
           )}
 
           {/* =============================================================== */}
-          {/* OPTION 2: WHATSAPP OTP (Free via Meta Cloud API / Sandbox) */}
+          {/* 2. EMAIL OTP FORM */}
           {/* =============================================================== */}
-          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-50/30 p-4 dark:border-emerald-800/30 dark:bg-emerald-950/20 mb-4">
-            <div className="flex items-center gap-2 text-xs font-bold text-emerald-900 dark:text-emerald-200">
-              <span className="text-base">💬</span>
-              <span>WhatsApp Instant OTP (Meta Cloud API)</span>
-            </div>
-            <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
-              Receive your 6-digit login token directly on your verified WhatsApp number.
-            </p>
-          </div>
-
-          {/* STEP 1: MOBILE NUMBER INPUT */}
-          {step === 'phone' && (
-            <form onSubmit={handleSendOtp} className="space-y-4">
+          {step === 'email' && (
+            <form onSubmit={handleSendEmailOtp} className="space-y-4">
               <div>
                 <label
-                  htmlFor="mobile-input"
+                  htmlFor="email-input"
                   className="block text-xs font-semibold uppercase tracking-wider text-neutral-700 dark:text-neutral-300"
                 >
-                  WhatsApp Mobile Number
+                  Work Email or Guest Email
                 </label>
-
-                <div className="mt-2 flex rounded-2xl border border-neutral-300 shadow-xs focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/20 dark:border-neutral-700 dark:bg-neutral-800">
-                  <select
-                    value={countryCode}
-                    onChange={(e) => setCountryCode(e.target.value)}
-                    disabled={isLoading}
-                    className="cursor-pointer rounded-l-2xl border-r border-neutral-300 bg-neutral-50 px-3 py-2.5 text-xs font-semibold text-neutral-800 focus:outline-none dark:border-neutral-700 dark:bg-neutral-850 dark:text-neutral-200"
-                  >
-                    {COUNTRY_CODES.map((item) => (
-                      <option key={item.code} value={item.code}>
-                        {item.flag} {item.code}
-                      </option>
-                    ))}
-                  </select>
-
+                <div className="mt-2">
                   <input
-                    id="mobile-input"
-                    type="tel"
-                    inputMode="numeric"
-                    placeholder="Enter 10-digit mobile number"
-                    value={mobileNumber}
-                    onChange={(e) => setMobileNumber(e.target.value.replace(/[^\d\s-]/g, ''))}
+                    id="email-input"
+                    type="email"
+                    placeholder="name@resort.com or guest@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     disabled={isLoading}
                     required
-                    className="block w-full rounded-r-2xl bg-transparent px-3.5 py-2.5 text-sm font-mono text-neutral-900 placeholder-neutral-400 focus:outline-none dark:text-neutral-100"
+                    className="block w-full rounded-2xl border border-neutral-300 bg-transparent px-4 py-2.5 text-sm text-neutral-900 placeholder-neutral-400 shadow-xs focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-neutral-700 dark:text-neutral-100"
                   />
                 </div>
               </div>
 
               <button
                 type="submit"
-                disabled={isLoading || !mobileNumber.trim()}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-500 disabled:opacity-60"
+                disabled={isLoading || !email.trim()}
+                className="flex w-full items-center justify-center rounded-2xl bg-emerald-600 py-3 px-4 text-xs font-bold text-white shadow-md transition hover:bg-emerald-700 disabled:opacity-50"
               >
-                <span>{isLoading ? (loadingText || 'Dispatching code...') : 'Send WhatsApp Code →'}</span>
+                {isLoading ? loadingText || 'Sending...' : 'Send Verification Code →'}
               </button>
+
+              {/* Quick Dev Preset */}
+              <div className="mt-4 pt-4 border-t border-dashed border-neutral-200 dark:border-neutral-800 text-center">
+                <button
+                  type="button"
+                  onClick={handleFillTestAdmin}
+                  className="text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 underline dark:text-emerald-400"
+                >
+                  ⚡ Auto-fill Test Resort Admin (admin@raigadtropical.com)
+                </button>
+              </div>
             </form>
           )}
 
-          {/* STEP 2: 6-DIGIT OTP VERIFICATION */}
+          {/* STEP 2: 6-DIGIT OTP INPUT */}
           {step === 'otp' && (
-            <form onSubmit={handleVerifyOtp} className="space-y-5">
+            <form onSubmit={(e) => handleVerifyEmailOtp(e)} className="space-y-5">
               <div>
                 <div className="flex items-center justify-between">
-                  <label
-                    htmlFor="otp-0"
-                    className="block text-xs font-semibold uppercase tracking-wider text-neutral-700 dark:text-neutral-300"
-                  >
-                    Enter 6-Digit WhatsApp Code
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
+                    Enter 6-Digit Code
                   </label>
                   <button
                     type="button"
                     onClick={() => {
-                      setStep('phone');
+                      setStep('email');
                       setErrorMessage(null);
                     }}
-                    className="text-xs font-medium text-emerald-600 hover:underline dark:text-emerald-400"
+                    className="text-xs text-neutral-500 hover:text-emerald-600 hover:underline"
                   >
-                    Change Number
+                    Change Email
                   </button>
                 </div>
-                <p className="mt-1 text-xs text-neutral-500">
-                  Sent to WhatsApp: <span className="font-semibold text-neutral-700 dark:text-neutral-300">{countryCode} {mobileNumber}</span>
+
+                <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                  Code sent to <span className="font-bold text-neutral-800 dark:text-neutral-200">{email}</span>
                 </p>
 
-                {/* 6 Digit Input Boxes */}
+                {/* 6 Digit Inputs */}
                 <div className="mt-4 flex justify-between gap-2">
                   {otpDigits.map((digit, idx) => (
                     <input
                       key={idx}
-                      id={`otp-${idx}`}
                       ref={(el) => {
                         otpInputRefs.current[idx] = el;
                       }}
                       type="text"
                       inputMode="numeric"
-                      pattern="[0-9]*"
                       maxLength={1}
                       value={digit}
                       onChange={(e) => handleOtpChange(idx, e.target.value)}
                       onKeyDown={(e) => handleOtpKeyDown(idx, e)}
                       disabled={isLoading}
-                      className="h-12 w-12 rounded-xl border border-neutral-300 text-center text-xl font-bold text-neutral-900 shadow-xs focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+                      className="h-12 w-12 rounded-xl border border-neutral-300 bg-transparent text-center font-mono text-xl font-bold text-neutral-900 shadow-xs focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-neutral-700 dark:text-white"
                     />
                   ))}
                 </div>
@@ -417,36 +385,48 @@ function LoginForm() {
               <button
                 type="submit"
                 disabled={isLoading || otpDigits.some((d) => d === '')}
-                className="flex w-full items-center justify-center rounded-2xl bg-emerald-600 px-4 py-3 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-500 disabled:opacity-60"
+                className="flex w-full items-center justify-center rounded-2xl bg-emerald-600 py-3 px-4 text-xs font-bold text-white shadow-md transition hover:bg-emerald-700 disabled:opacity-50"
               >
-                {isLoading ? (loadingText || 'Verifying...') : 'Verify & Enter Dashboard'}
+                {isLoading ? loadingText || 'Verifying...' : 'Verify & Enter Dashboard →'}
               </button>
 
-              <div className="flex items-center justify-between text-xs text-neutral-500">
-                <span>Didn&apos;t receive code?</span>
+              <div className="flex items-center justify-between pt-2 text-xs">
+                <span className="text-neutral-500">Didn&apos;t get the email?</span>
+                {resendCooldown > 0 ? (
+                  <span className="font-mono text-neutral-400">Resend in {resendCooldown}s</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleSendEmailOtp()}
+                    disabled={isLoading}
+                    className="font-bold text-emerald-600 hover:underline dark:text-emerald-400"
+                  >
+                    Resend Code
+                  </button>
+                )}
+              </div>
+
+              <div className="rounded-xl bg-stone-100 p-2.5 text-center text-[11px] text-stone-600 dark:bg-neutral-800 dark:text-stone-300">
+                <span>Test Mode active · Default Test Code: </span>
                 <button
                   type="button"
-                  onClick={() => handleSendOtp()}
-                  disabled={resendCooldown > 0 || isLoading}
-                  className="font-medium text-emerald-600 hover:underline disabled:opacity-50 dark:text-emerald-400"
+                  onClick={() => {
+                    setOtpDigits(['1', '2', '3', '4', '5', '6']);
+                    handleVerifyEmailOtp(undefined, PREDEFINED_TEST_OTP);
+                  }}
+                  className="font-mono font-bold text-emerald-600 hover:underline dark:text-emerald-400"
                 >
-                  {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend OTP via WhatsApp'}
+                  {PREDEFINED_TEST_OTP} (Click to Fill)
                 </button>
               </div>
             </form>
           )}
-
-          {/* Discreet Local Development Helper */}
-          <div className="mt-6 border-t border-neutral-100 pt-4 text-center dark:border-neutral-800">
-            <button
-              type="button"
-              onClick={handleFillTestAccount}
-              className="text-[11px] text-neutral-400 hover:text-neutral-600 underline dark:text-neutral-500 dark:hover:text-neutral-400"
-            >
-              🛠️ Fill Test Account ({DEFAULT_TEST_PHONE} / {PREDEFINED_TEST_OTP})
-            </button>
-          </div>
         </div>
+
+        {/* Footer info */}
+        <p className="text-center text-[11px] text-neutral-400">
+          PropSyncHub Multi-Tenant Resort Booking &amp; PMS Architecture
+        </p>
       </div>
     </div>
   );

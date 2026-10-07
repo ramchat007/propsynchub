@@ -9,6 +9,10 @@ import {
   deleteIncidentalCharge,
   settleBookingInvoice,
 } from '@/app/actions/ledger';
+import {
+  rescheduleBookingDates,
+  cancelBooking,
+} from '@/app/actions/booking';
 import { IncidentalCategory } from '@/types';
 
 interface BookingLedgerClientProps {
@@ -53,6 +57,67 @@ export default function BookingLedgerClient({ initialDetails }: BookingLedgerCli
   const [paymentMethod, setPaymentMethod] = useState<'upi' | 'cash' | 'card' | 'bank_transfer' | 'razorpay'>('upi');
   const [paymentReference, setPaymentReference] = useState('');
   const [settleNotes, setSettleNotes] = useState('');
+
+  // Reschedule & Cancel Modal States
+  const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
+  const [newCheckIn, setNewCheckIn] = useState(booking.check_in_date);
+  const [newCheckOut, setNewCheckOut] = useState(booking.check_out_date);
+
+  const [isCancelOpen, setIsCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('Guest requested cancellation');
+
+  /**
+   * Reschedule Stay Dates
+   */
+  function handleRescheduleBooking(e: React.FormEvent) {
+    e.preventDefault();
+    setFeedback(null);
+
+    startTransition(async () => {
+      const res = await rescheduleBookingDates({
+        bookingId: booking.id,
+        tenantId: booking.tenant_id,
+        newCheckIn,
+        newCheckOut,
+      });
+
+      if (res.success) {
+        setFeedback({ type: 'success', message: res.message || 'Stay dates rescheduled successfully.' });
+        setIsRescheduleOpen(false);
+        router.refresh();
+      } else {
+        setFeedback({ type: 'error', message: res.error || 'Failed to reschedule stay.' });
+      }
+    });
+  }
+
+  /**
+   * Cancel Reservation
+   */
+  function handleCancelBooking(e: React.FormEvent) {
+    e.preventDefault();
+    setFeedback(null);
+
+    startTransition(async () => {
+      const res = await cancelBooking({
+        bookingId: booking.id,
+        tenantId: booking.tenant_id,
+        reason: cancelReason,
+      });
+
+      if (res.success) {
+        setFeedback({ type: 'success', message: res.message || 'Reservation cancelled and inventory released.' });
+        setDetails((prev) => ({
+          ...prev,
+          booking: { ...prev.booking, booking_status: 'cancelled' },
+        }));
+        setIsCancelOpen(false);
+        router.refresh();
+      } else {
+        setFeedback({ type: 'error', message: res.error || 'Failed to cancel reservation.' });
+      }
+    });
+  }
 
   /**
    * Handle adding an incidental charge
@@ -187,8 +252,32 @@ export default function BookingLedgerClient({ initialDetails }: BookingLedgerCli
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          {booking.booking_status !== 'checked_out' && (
+        <div className="flex flex-wrap items-center gap-2.5">
+          {booking.booking_status !== 'cancelled' && (
+            <button
+              type="button"
+              onClick={() => {
+                setNewCheckIn(booking.check_in_date);
+                setNewCheckOut(booking.check_out_date);
+                setIsRescheduleOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-xs font-semibold text-stone-700 shadow-2xs hover:bg-stone-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-stone-300"
+            >
+              <span>📅 Reschedule Dates</span>
+            </button>
+          )}
+
+          {booking.booking_status !== 'cancelled' && booking.booking_status !== 'checked_out' && (
+            <button
+              type="button"
+              onClick={() => setIsCancelOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-rose-300 bg-rose-50 px-3.5 py-2.5 text-xs font-bold text-rose-700 hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300"
+            >
+              <span>✕ Cancel Stay</span>
+            </button>
+          )}
+
+          {booking.booking_status !== 'checked_out' && booking.booking_status !== 'cancelled' && (
             <button
               type="button"
               onClick={() => setIsSettleModalOpen(true)}
@@ -210,6 +299,19 @@ export default function BookingLedgerClient({ initialDetails }: BookingLedgerCli
           </button>
         </div>
       </div>
+
+      {/* CANCELLED BANNER IF APPLICABLE */}
+      {booking.booking_status === 'cancelled' && (
+        <div className="rounded-2xl border border-rose-300 bg-rose-50/80 p-4 text-xs text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200">
+          <div className="flex items-center gap-2 font-bold">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-600 text-[10px] text-white">✕</span>
+            <span>Reservation Cancelled</span>
+          </div>
+          <p className="mt-1 text-stone-600 dark:text-stone-400">
+            This reservation is marked as cancelled. The assigned physical unit has been freed and is open for booking on the Room Rack.
+          </p>
+        </div>
+      )}
 
       {/* FEEDBACK BANNER */}
       {feedback && (
@@ -868,6 +970,161 @@ export default function BookingLedgerClient({ initialDetails }: BookingLedgerCli
                   className="rounded-xl bg-emerald-600 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-500 disabled:opacity-50"
                 >
                   {isPending ? 'Settling...' : 'Confirm Payment & Check Out'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* RESCHEDULE MODAL */}
+      {isRescheduleOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="flex items-center justify-between border-b border-stone-100 pb-3 dark:border-neutral-800">
+              <div>
+                <h3 className="text-base font-bold text-stone-900 dark:text-white">
+                  📅 Reschedule Reservation
+                </h3>
+                <p className="text-xs text-stone-500">
+                  Guest: {booking.guest_name} (#{booking.id.slice(0, 8).toUpperCase()})
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRescheduleOpen(false)}
+                className="rounded-lg p-1 text-stone-400 hover:text-stone-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleRescheduleBooking} className="mt-4 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-500">
+                    New Check-In
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={newCheckIn}
+                    onChange={(e) => setNewCheckIn(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-stone-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-500">
+                    New Check-Out
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={newCheckOut}
+                    min={newCheckIn}
+                    onChange={(e) => setNewCheckOut(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-stone-100"
+                  />
+                </div>
+              </div>
+
+              {newCheckIn && newCheckOut && new Date(newCheckOut) > new Date(newCheckIn) && (
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3 text-xs dark:border-emerald-900/40 dark:bg-emerald-950/20">
+                  <div className="flex justify-between font-semibold text-emerald-900 dark:text-emerald-200">
+                    <span>Stay Duration:</span>
+                    <span>
+                      {Math.max(1, Math.round((new Date(newCheckOut).getTime() - new Date(newCheckIn).getTime()) / (1000 * 60 * 60 * 24)))} Nights
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-300">
+                    ✓ System will run collision check for assigned unit ({room?.name || 'unit'}) before confirming.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-stone-100 dark:border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setIsRescheduleOpen(false)}
+                  className="rounded-xl border border-stone-300 px-4 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-50 dark:border-neutral-700 dark:text-stone-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isPending || !newCheckIn || !newCheckOut || new Date(newCheckOut) <= new Date(newCheckIn)}
+                  className="rounded-xl bg-neutral-900 px-5 py-2 text-xs font-bold text-white shadow-2xs hover:bg-neutral-800 disabled:opacity-50 dark:bg-white dark:text-neutral-900"
+                >
+                  {isPending ? 'Validating & Updating...' : 'Confirm Reschedule'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* CANCEL MODAL */}
+      {isCancelOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-3xl border border-rose-200 bg-white p-6 shadow-2xl dark:border-rose-900/40 dark:bg-neutral-900">
+            <div className="flex items-center justify-between border-b border-rose-100 pb-3 dark:border-neutral-800">
+              <div>
+                <h3 className="text-base font-bold text-rose-700 dark:text-rose-400">
+                  ✕ Cancel Reservation
+                </h3>
+                <p className="text-xs text-stone-500">
+                  Guest: {booking.guest_name} (#{booking.id.slice(0, 8).toUpperCase()})
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCancelOpen(false)}
+                className="rounded-lg p-1 text-stone-400 hover:text-stone-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCancelBooking} className="mt-4 space-y-4">
+              <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-3 text-xs text-rose-800 dark:border-rose-900/30 dark:bg-rose-950/20 dark:text-rose-300">
+                <p className="font-semibold">⚠️ Inventory Release Notice:</p>
+                <p className="mt-0.5 text-[11px]">
+                  Cancelling this reservation will immediately release {room?.name || 'the unit'} back to available inventory on the Room Rack.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300">
+                  Select Cancellation Reason
+                </label>
+                <select
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-xs font-semibold text-stone-900 focus:border-rose-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-stone-100"
+                >
+                  <option value="Guest requested cancellation">Guest requested cancellation</option>
+                  <option value="Guest no-show / duplicate booking">Guest no-show / duplicate booking</option>
+                  <option value="Medical or travel emergency">Medical or travel emergency</option>
+                  <option value="Payment issue / fraud prevention">Payment issue / failed payment</option>
+                  <option value="Operational maintenance / resort request">Operational maintenance / resort request</option>
+                  <option value="Other / Front Desk reason">Other</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-stone-100 dark:border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setIsCancelOpen(false)}
+                  className="rounded-xl border border-stone-300 px-4 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-50 dark:border-neutral-700 dark:text-stone-300"
+                >
+                  Keep Reservation
+                </button>
+                <button
+                  type="submit"
+                  disabled={isPending}
+                  className="rounded-xl bg-rose-600 px-5 py-2 text-xs font-bold text-white shadow-2xs hover:bg-rose-500 disabled:opacity-50"
+                >
+                  {isPending ? 'Cancelling...' : 'Confirm Cancellation'}
                 </button>
               </div>
             </form>

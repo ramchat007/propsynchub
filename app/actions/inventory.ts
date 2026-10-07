@@ -122,6 +122,7 @@ export async function addRoomCategory(formData: FormData): Promise<ActionRespons
     }
 
     revalidatePath('/dashboard');
+    revalidatePath('/inventory');
     return {
       success: true,
       message: `Category "${name}" created successfully.`,
@@ -134,6 +135,110 @@ export async function addRoomCategory(formData: FormData): Promise<ActionRespons
 }
 
 /**
+ * 1b. EDIT ROOM CATEGORY
+ */
+export async function editRoomCategory(formData: FormData): Promise<ActionResponse> {
+  try {
+    const categoryId = formData.get('categoryId')?.toString();
+    const tenantId = formData.get('tenantId')?.toString();
+    const name = formData.get('name')?.toString()?.trim();
+    const description = formData.get('description')?.toString()?.trim() || null;
+    const basePrice = parseFloat(formData.get('basePrice')?.toString() || '0');
+    const extraPaxPrice = parseFloat(formData.get('extraPaxPrice')?.toString() || '0');
+    const maxAdults = parseInt(formData.get('maxAdults')?.toString() || '2', 10);
+    const maxChildren = parseInt(formData.get('maxChildren')?.toString() || '0', 10);
+
+    if (!categoryId || !tenantId) return { success: false, error: 'Category ID and Tenant ID are required.' };
+    if (!name) return { success: false, error: 'Category name is required.' };
+    if (isNaN(basePrice) || basePrice < 0) return { success: false, error: 'Valid base price is required.' };
+
+    const { supabase } = await getAuthenticatedAdminTenant(tenantId);
+
+    const { data: updatedCat, error: updateError } = await supabase
+      .from('room_categories')
+      .update({
+        name,
+        description,
+        base_price_inr: basePrice,
+        extra_pax_price_inr: extraPaxPrice,
+        max_adults: maxAdults,
+        max_children: maxChildren,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', categoryId)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    // Synchronize room_type name on rooms belonging to this category
+    await supabase
+      .from('rooms')
+      .update({ room_type: name })
+      .eq('category_id', categoryId)
+      .eq('tenant_id', tenantId);
+
+    revalidatePath('/dashboard');
+    revalidatePath('/inventory');
+
+    return {
+      success: true,
+      message: `Category "${name}" updated successfully.`,
+      data: updatedCat,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to update room category.';
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * 1c. DELETE ROOM CATEGORY (With Booking & Unit Safety)
+ */
+export async function deleteRoomCategory(categoryId: string, tenantId: string): Promise<ActionResponse> {
+  try {
+    if (!categoryId || !tenantId) return { success: false, error: 'Category ID and Tenant ID are required.' };
+
+    const { supabase } = await getAuthenticatedAdminTenant(tenantId);
+
+    // 1. Check if any physical rooms belong to this category
+    const { data: linkedRooms } = await supabase
+      .from('rooms')
+      .select('id, name')
+      .eq('category_id', categoryId)
+      .eq('tenant_id', tenantId);
+
+    if (linkedRooms && linkedRooms.length > 0) {
+      return {
+        success: false,
+        error: `Cannot delete category: ${linkedRooms.length} physical room units (${linkedRooms.map(r => r.name).join(', ')}) are currently assigned to it. Please reassign or delete these rooms first.`,
+      };
+    }
+
+    // 2. Delete the category
+    const { error: delError } = await supabase
+      .from('room_categories')
+      .delete()
+      .eq('id', categoryId)
+      .eq('tenant_id', tenantId);
+
+    if (delError) throw delError;
+
+    revalidatePath('/dashboard');
+    revalidatePath('/inventory');
+
+    return {
+      success: true,
+      message: 'Room category removed successfully.',
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to delete room category.';
+    return { success: false, error: message };
+  }
+}
+
+/**
  * 2. ADD ROOM TO CATEGORY
  */
 export async function addRoom(formData: FormData): Promise<ActionResponse> {
@@ -141,7 +246,7 @@ export async function addRoom(formData: FormData): Promise<ActionResponse> {
     const tenantId = formData.get('tenantId')?.toString();
     const name = formData.get('name')?.toString()?.trim();
     const roomNumber = formData.get('roomNumber')?.toString()?.trim() || null;
-    const roomType = formData.get('roomType')?.toString()?.trim() || 'standard';
+    let roomType = formData.get('roomType')?.toString()?.trim() || 'Standard';
     const categoryId = formData.get('categoryId')?.toString()?.trim() || null;
     const capacityAdults = parseInt(formData.get('capacityAdults')?.toString() || '2', 10);
     const capacityChildren = parseInt(formData.get('capacityChildren')?.toString() || '0', 10);
@@ -152,6 +257,16 @@ export async function addRoom(formData: FormData): Promise<ActionResponse> {
     if (isNaN(basePrice) || basePrice < 0) return { success: false, error: 'Valid base price is required.' };
 
     const { supabase } = await getAuthenticatedAdminTenant(tenantId);
+
+    // If categoryId provided, retrieve category name for consistency
+    if (categoryId) {
+      const { data: cat } = await supabase
+        .from('room_categories')
+        .select('name')
+        .eq('id', categoryId)
+        .maybeSingle();
+      if (cat?.name) roomType = cat.name;
+    }
 
     const roomPayload: Record<string, unknown> = {
       tenant_id: tenantId,
@@ -194,6 +309,7 @@ export async function addRoom(formData: FormData): Promise<ActionResponse> {
     });
 
     revalidatePath('/dashboard');
+    revalidatePath('/inventory');
     return {
       success: true,
       message: `Room "${name}" added to inventory.`,
@@ -201,6 +317,150 @@ export async function addRoom(formData: FormData): Promise<ActionResponse> {
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to add room.';
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * 2b. EDIT PHYSICAL ROOM UNIT (With Booking Safety Checks)
+ */
+export async function editRoomUnit(formData: FormData): Promise<ActionResponse> {
+  try {
+    const roomId = formData.get('roomId')?.toString();
+    const tenantId = formData.get('tenantId')?.toString();
+    const name = formData.get('name')?.toString()?.trim();
+    const roomNumber = formData.get('roomNumber')?.toString()?.trim() || null;
+    const categoryId = formData.get('categoryId')?.toString()?.trim() || null;
+    const capacityAdults = parseInt(formData.get('capacityAdults')?.toString() || '2', 10);
+    const capacityChildren = parseInt(formData.get('capacityChildren')?.toString() || '0', 10);
+    const basePrice = parseFloat(formData.get('basePrice')?.toString() || '0');
+    const status = (formData.get('status')?.toString()?.trim() || 'available') as 'available' | 'maintenance' | 'blocked';
+
+    if (!roomId || !tenantId) return { success: false, error: 'Room ID and Tenant ID are required.' };
+    if (!name) return { success: false, error: 'Room name is required.' };
+    if (isNaN(basePrice) || basePrice < 0) return { success: false, error: 'Valid base price is required.' };
+
+    const { supabase } = await getAuthenticatedAdminTenant(tenantId);
+
+    // Fetch existing room
+    const { data: currentRoom, error: fetchError } = await supabase
+      .from('rooms')
+      .select('*')
+      .eq('id', roomId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (fetchError || !currentRoom) {
+      return { success: false, error: 'Room unit not found.' };
+    }
+
+    // Safety check: If category is being changed, check for active / upcoming reservations
+    const today = new Date().toISOString().split('T')[0];
+    if (categoryId && currentRoom.category_id && categoryId !== currentRoom.category_id) {
+      const { data: activeBookings } = await supabase
+        .from('bookings')
+        .select('id, guest_name, check_in_date, check_out_date')
+        .eq('room_id', roomId)
+        .eq('tenant_id', tenantId)
+        .neq('booking_status', 'cancelled')
+        .gte('check_out_date', today);
+
+      if (activeBookings && activeBookings.length > 0) {
+        return {
+          success: false,
+          error: `Safety Alert: Cannot change room category while active reservations exist on this unit (${activeBookings.length} future stays booked). Please reassign bookings first.`,
+        };
+      }
+    }
+
+    // Resolve category name if changed
+    let roomType = currentRoom.room_type;
+    if (categoryId) {
+      const { data: cat } = await supabase
+        .from('room_categories')
+        .select('name')
+        .eq('id', categoryId)
+        .maybeSingle();
+      if (cat?.name) roomType = cat.name;
+    }
+
+    const { data: updatedRoom, error: updateError } = await supabase
+      .from('rooms')
+      .update({
+        name,
+        room_number: roomNumber,
+        category_id: categoryId || currentRoom.category_id,
+        room_type: roomType,
+        capacity_adults: capacityAdults,
+        capacity_children: capacityChildren,
+        base_price_inr: basePrice,
+        status,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', roomId)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    revalidatePath('/dashboard');
+    revalidatePath('/inventory');
+
+    return {
+      success: true,
+      message: `Room "${name}" updated successfully.`,
+      data: updatedRoom,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to edit room unit.';
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * 2c. DELETE PHYSICAL ROOM UNIT (With Booking Safety)
+ */
+export async function deleteRoomUnit(roomId: string, tenantId: string): Promise<ActionResponse> {
+  try {
+    if (!roomId || !tenantId) return { success: false, error: 'Room ID and Tenant ID are required.' };
+
+    const { supabase } = await getAuthenticatedAdminTenant(tenantId);
+    const today = new Date().toISOString().split('T')[0];
+
+    // Check if any active or upcoming reservations exist for this physical room
+    const { data: activeBookings } = await supabase
+      .from('bookings')
+      .select('id, guest_name')
+      .eq('room_id', roomId)
+      .eq('tenant_id', tenantId)
+      .neq('booking_status', 'cancelled')
+      .gte('check_out_date', today);
+
+    if (activeBookings && activeBookings.length > 0) {
+      return {
+        success: false,
+        error: `Cannot delete unit: Room has ${activeBookings.length} active or future reservations. Please cancel or move bookings before removing.`,
+      };
+    }
+
+    const { error: delError } = await supabase
+      .from('rooms')
+      .delete()
+      .eq('id', roomId)
+      .eq('tenant_id', tenantId);
+
+    if (delError) throw delError;
+
+    revalidatePath('/dashboard');
+    revalidatePath('/inventory');
+
+    return {
+      success: true,
+      message: 'Room unit removed from inventory.',
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to delete room unit.';
     return { success: false, error: message };
   }
 }
@@ -234,6 +494,7 @@ export async function updateRoomStatus(
     if (error) throw error;
 
     revalidatePath('/dashboard');
+    revalidatePath('/inventory');
     return {
       success: true,
       message: `Room status updated to "${newStatus}".`,

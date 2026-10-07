@@ -1,5 +1,6 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
 import { createServerSupabaseClient } from '@/lib/supabase-server';
 import { Room, RoomCategory, Booking } from '@/types';
 
@@ -343,3 +344,455 @@ export async function updateBookingStatus(
     return { success: false, error: message };
   }
 }
+
+/**
+ * Reassign Booking to a different Room
+ * Admin action allowing front desk manager to switch rooms with double-booking prevention.
+ */
+export async function reassignBookingRoom(
+  bookingId: string,
+  tenantId: string,
+  newRoomId: string
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    if (!bookingId || !tenantId || !newRoomId) {
+      return { success: false, error: 'Booking ID, Tenant ID, and new Room ID are required.' };
+    }
+
+    const supabase = await createServerSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // 1. Fetch current booking stay dates
+    const { data: booking, error: bErr } = await supabase
+      .from('bookings')
+      .select('id, guest_name, check_in_date, check_out_date, room_id')
+      .eq('id', bookingId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (bErr || !booking) {
+      return { success: false, error: 'Booking not found.' };
+    }
+
+    // 2. Check if new room exists and belongs to tenant
+    const { data: room, error: roomErr } = await supabase
+      .from('rooms')
+      .select('name')
+      .eq('id', newRoomId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (roomErr || !room) {
+      return { success: false, error: 'Target room does not exist.' };
+    }
+
+    // 3. Prevent double-booking / collision in the new target room for this guest's dates
+    const { data: collision } = await supabase
+      .from('bookings')
+      .select('id, guest_name')
+      .eq('tenant_id', tenantId)
+      .eq('room_id', newRoomId)
+      .neq('id', bookingId)
+      .neq('booking_status', 'cancelled')
+      .lt('check_in_date', booking.check_out_date)
+      .gt('check_out_date', booking.check_in_date)
+      .limit(1);
+
+    if (collision && collision.length > 0) {
+      return {
+        success: false,
+        error: `Cannot reassign: ${room.name} is already booked by ${collision[0].guest_name} for these dates.`,
+      };
+    }
+
+    const { error: updateError } = await supabase
+      .from('bookings')
+      .update({
+        room_id: newRoomId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', bookingId)
+      .eq('tenant_id', tenantId);
+
+    if (updateError) throw updateError;
+
+    try {
+      await supabase.from('audit_logs').insert({
+        tenant_id: tenantId,
+        user_id: user?.id || null,
+        table_name: 'bookings',
+        record_id: bookingId,
+        action_type: 'UPDATE',
+        old_data: { room_id: booking.room_id },
+        new_data: {
+          reassigned_room_id: newRoomId,
+          reassigned_room_name: room.name,
+          updated_at: new Date().toISOString(),
+        },
+        created_at: new Date().toISOString(),
+      });
+    } catch {}
+
+    revalidatePath('/bookings');
+    revalidatePath('/dashboard');
+    revalidatePath('/calendar');
+
+    return {
+      success: true,
+      message: `Booking #${bookingId.slice(0, 8).toUpperCase()} reassigned to ${room.name} successfully.`,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to reassign room.';
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Reschedule Booking Stay Dates (Change Dates with Collision Prevention)
+ * Admin action allowing front desk to change check-in / check-out dates and auto-recalculate folio tariff.
+ */
+export async function rescheduleBookingDates(payload: {
+  bookingId: string;
+  tenantId: string;
+  newCheckIn: string;
+  newCheckOut: string;
+}): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    const { bookingId, tenantId, newCheckIn, newCheckOut } = payload;
+    if (!bookingId || !tenantId || !newCheckIn || !newCheckOut) {
+      return { success: false, error: 'Booking ID, Tenant ID, and new stay dates are required.' };
+    }
+
+    const dIn = new Date(newCheckIn);
+    const dOut = new Date(newCheckOut);
+    if (isNaN(dIn.getTime()) || isNaN(dOut.getTime()) || dOut <= dIn) {
+      return { success: false, error: 'Check-out date must be strictly after check-in date.' };
+    }
+
+    const supabase = await createServerSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // 1. Fetch current booking & assigned room
+    const { data: booking, error: bErr } = await supabase
+      .from('bookings')
+      .select('*, room:rooms(*)')
+      .eq('id', bookingId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (bErr || !booking) {
+      return { success: false, error: 'Booking not found.' };
+    }
+
+    if (booking.booking_status === 'cancelled') {
+      return { success: false, error: 'Cannot reschedule a cancelled reservation.' };
+    }
+
+    // 2. Collision check for the same room on new dates
+    const { data: collision } = await supabase
+      .from('bookings')
+      .select('id, guest_name')
+      .eq('tenant_id', tenantId)
+      .eq('room_id', booking.room_id)
+      .neq('id', bookingId)
+      .neq('booking_status', 'cancelled')
+      .lt('check_in_date', newCheckOut)
+      .gt('check_out_date', newCheckIn)
+      .limit(1);
+
+    if (collision && collision.length > 0) {
+      return {
+        success: false,
+        error: `Room is unavailable for new dates: already reserved by ${collision[0].guest_name}.`,
+      };
+    }
+
+    // 3. Recalculate nights and total amount
+    const diffMs = dOut.getTime() - dIn.getTime();
+    const nights = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+    const roomRatePerNight = booking.room?.base_price_inr || Math.round(booking.total_amount_inr / Math.max(1, Math.round((new Date(booking.check_out_date).getTime() - new Date(booking.check_in_date).getTime()) / (1000 * 60 * 60 * 24))));
+    const newTotal = nights * roomRatePerNight;
+
+    // 4. Update booking record
+    const { error: updateError } = await supabase
+      .from('bookings')
+      .update({
+        check_in_date: newCheckIn,
+        check_out_date: newCheckOut,
+        total_amount_inr: newTotal,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', bookingId)
+      .eq('tenant_id', tenantId);
+
+    if (updateError) throw updateError;
+
+    // 5. Audit Log
+    try {
+      await supabase.from('audit_logs').insert({
+        tenant_id: tenantId,
+        user_id: user?.id || null,
+        table_name: 'bookings',
+        record_id: bookingId,
+        action_type: 'UPDATE',
+        old_data: { check_in_date: booking.check_in_date, check_out_date: booking.check_out_date, total_amount_inr: booking.total_amount_inr },
+        new_data: { check_in_date: newCheckIn, check_out_date: newCheckOut, total_amount_inr: newTotal },
+        created_at: new Date().toISOString(),
+      });
+    } catch {}
+
+    revalidatePath('/bookings');
+    revalidatePath('/dashboard');
+    revalidatePath('/calendar');
+
+    return {
+      success: true,
+      message: `Reservation dates updated to ${newCheckIn} → ${newCheckOut} (${nights} nights, ₹${newTotal.toLocaleString()}).`,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to reschedule stay.';
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Cancel Reservation (Releases inventory immediately)
+ * Admin action allowing front desk to cancel a booking with optional reason.
+ */
+export async function cancelBooking(payload: {
+  bookingId: string;
+  tenantId: string;
+  reason?: string;
+}): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    const { bookingId, tenantId, reason } = payload;
+    if (!bookingId || !tenantId) {
+      return { success: false, error: 'Booking ID and Tenant ID are required.' };
+    }
+
+    const supabase = await createServerSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const { data: booking, error: bErr } = await supabase
+      .from('bookings')
+      .select('id, guest_name, special_requests, booking_status')
+      .eq('id', bookingId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (bErr || !booking) {
+      return { success: false, error: 'Booking not found.' };
+    }
+
+    const reasonNote = reason ? `[Cancelled by Front Desk: ${reason}]` : '[Cancelled by Front Desk]';
+    const updatedNotes = booking.special_requests
+      ? `${booking.special_requests}\n${reasonNote}`
+      : reasonNote;
+
+    const { error: updateError } = await supabase
+      .from('bookings')
+      .update({
+        booking_status: 'cancelled',
+        special_requests: updatedNotes,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', bookingId)
+      .eq('tenant_id', tenantId);
+
+    if (updateError) throw updateError;
+
+    try {
+      await supabase.from('audit_logs').insert({
+        tenant_id: tenantId,
+        user_id: user?.id || null,
+        table_name: 'bookings',
+        record_id: bookingId,
+        action_type: 'UPDATE',
+        old_data: { booking_status: booking.booking_status },
+        new_data: { booking_status: 'cancelled', reason },
+        created_at: new Date().toISOString(),
+      });
+    } catch {}
+
+    revalidatePath('/bookings');
+    revalidatePath('/dashboard');
+    revalidatePath('/calendar');
+
+    return {
+      success: true,
+      message: `Booking #${bookingId.slice(0, 8).toUpperCase()} cancelled successfully. Room is now available.`,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to cancel booking.';
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Seed Realistic Sample Bookings for Dashboard Preview
+ */
+export async function seedSampleBookings(tenantId: string): Promise<{ success: boolean; message: string }> {
+  try {
+    if (!tenantId) {
+      return { success: false, message: 'Tenant identifier is required.' };
+    }
+
+    const supabase = await createServerSupabaseClient();
+
+    // Fetch existing rooms
+    const { data: rooms } = await supabase
+      .from('rooms')
+      .select('id, name, base_price_inr')
+      .eq('tenant_id', tenantId)
+      .order('name');
+
+    if (!rooms || rooms.length === 0) {
+      return { success: false, message: 'Please create or initialize rooms first before generating sample bookings.' };
+    }
+
+    const today = new Date();
+    const formatDate = (d: Date) => d.toISOString().split('T')[0];
+
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const dayAfter = new Date(today);
+    dayAfter.setDate(dayAfter.getDate() + 2);
+
+    const room1 = rooms[0];
+    const room2 = rooms[1] || rooms[0];
+    const room3 = rooms[2] || rooms[0];
+
+    const sampleBookings = [
+      {
+        tenant_id: tenantId,
+        room_id: room1.id,
+        guest_name: 'Amelia Hart',
+        guest_mobile_number: '+919820160376',
+        guest_email: 'amelia.hart@luxurytravel.com',
+        check_in_date: formatDate(yesterday),
+        check_out_date: formatDate(dayAfter),
+        num_adults: 2,
+        num_children: 1,
+        total_amount_inr: (room1.base_price_inr || 8500) * 3,
+        booking_status: 'checked_in',
+        payment_status: 'paid',
+        special_requests: 'Private gazebo candle-light dinner setup requested.',
+      },
+      {
+        tenant_id: tenantId,
+        room_id: room2.id,
+        guest_name: 'Marcus Chen',
+        guest_mobile_number: '+919819001122',
+        guest_email: 'marcus.chen@outlook.com',
+        check_in_date: formatDate(today),
+        check_out_date: formatDate(dayAfter),
+        num_adults: 2,
+        num_children: 0,
+        total_amount_inr: (room2.base_price_inr || 8500) * 2,
+        booking_status: 'confirmed',
+        payment_status: 'paid',
+        special_requests: 'Late arrival expected around 17:30. Extra key card requested.',
+      },
+      {
+        tenant_id: tenantId,
+        room_id: room3.id,
+        guest_name: 'Sofia Laurent',
+        guest_mobile_number: '+919920334455',
+        guest_email: 'sofia.laurent@gmail.com',
+        check_in_date: formatDate(tomorrow),
+        check_out_date: formatDate(dayAfter),
+        num_adults: 4,
+        num_children: 2,
+        total_amount_inr: (room3.base_price_inr || 5200) * 1,
+        booking_status: 'pending',
+        payment_status: 'pending',
+        special_requests: 'Family weekend staycation. Requested early check-in at 11 AM if possible.',
+      },
+    ];
+
+    const { error: insertError } = await supabase.from('bookings').insert(sampleBookings);
+    if (insertError) throw insertError;
+
+    return {
+      success: true,
+      message: 'Sample demo reservations loaded successfully into Command Center.',
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Failed to seed sample bookings.';
+    return { success: false, message: msg };
+  }
+}
+
+/**
+ * Submit Offline / Waitlist Inquiry when rooms are unavailable online
+ */
+export async function submitWaitlistInquiry(payload: {
+  tenantId: string;
+  guestName: string;
+  guestMobile: string;
+  guestEmail?: string;
+  checkIn: string;
+  checkOut: string;
+  adults: number;
+  children: number;
+  notes?: string;
+}): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    const {
+      tenantId,
+      guestName,
+      guestMobile,
+      guestEmail,
+      checkIn,
+      checkOut,
+      adults,
+      children,
+      notes,
+    } = payload;
+
+    if (!tenantId || !guestName || !guestMobile) {
+      return { success: false, error: 'Name and mobile number are required.' };
+    }
+
+    const supabase = await createServerSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // Log the inquiry into audit_logs so the resort owner sees it in their admin feed
+    try {
+      await supabase.from('audit_logs').insert({
+        tenant_id: tenantId,
+        user_id: user?.id || null,
+        table_name: 'waitlist_inquiries',
+        record_id: null,
+        action_type: 'INSERT',
+        old_data: null,
+        new_data: {
+          guest_name: guestName.trim(),
+          guest_mobile: guestMobile.trim(),
+          guest_email: guestEmail?.trim() || null,
+          check_in_date: checkIn,
+          check_out_date: checkOut,
+          num_adults: adults,
+          num_children: children,
+          notes: notes?.trim() || 'Waitlist / offline booking request',
+          created_at: new Date().toISOString(),
+        },
+      });
+    } catch (auditErr) {
+      console.warn('Could not insert waitlist inquiry into audit_logs:', auditErr);
+    }
+
+    return {
+      success: true,
+      message: 'Your waitlist request has been submitted to the front desk. We will reach out to you directly via WhatsApp or Call!',
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to submit waitlist request.';
+    return { success: false, error: message };
+  }
+}
+

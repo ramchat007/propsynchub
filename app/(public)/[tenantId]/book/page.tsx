@@ -62,6 +62,7 @@ export default async function TenantBookingPage({ params }: BookingPageProps) {
 
     initialUser = {
       id: user.id,
+      email: user.email || '',
       phone: user.phone || profile?.mobile_number || '',
       fullName: profile?.full_name || '',
     };
