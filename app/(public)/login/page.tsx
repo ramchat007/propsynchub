@@ -102,8 +102,14 @@ function LoginForm() {
       setResendCooldown(60);
       setSuccessMessage(res.message || `Verification code sent to ${cleanEmail}.`);
 
+      if (res.data?.predefinedOtp) {
+        setOtpDigits(res.data.predefinedOtp.split(''));
+      } else {
+        setOtpDigits(['', '', '', '', '', '']);
+      }
+
       setTimeout(() => {
-        otpInputRefs.current[0]?.focus();
+        otpInputRefs.current[res.data?.predefinedOtp ? 5 : 0]?.focus();
       }, 100);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Error sending verification code.';

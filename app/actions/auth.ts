@@ -70,17 +70,20 @@ export async function requestEmailOtp(
       resortName,
     });
 
-    const message = isTestMode
-      ? `Verification code dispatched to ${email}. (Test Code: ${code})`
-      : `Verification code dispatched to ${email}.`;
+    const hasLiveMailer = Boolean(process.env.RESEND_API_KEY);
+    const isSandboxDelivery = isTestMode || !hasLiveMailer;
+
+    const message = isSandboxDelivery
+      ? `Verification code dispatched to ${email}. (Sandbox Code: ${code})`
+      : `Verification code dispatched to ${email}. Please check your inbox.`;
 
     return {
       success: true,
       message,
       data: {
         email,
-        predefinedOtp: isTestMode ? code : undefined,
-        isTestMode,
+        predefinedOtp: isSandboxDelivery ? code : undefined,
+        isTestMode: isSandboxDelivery,
       },
     };
   } catch (err: unknown) {

@@ -237,6 +237,9 @@ export default function BookingInterfaceClient({
       const res = await requestEmailOtp(guestEmail, tenant.id);
       if (res.success) {
         setOtpSent(true);
+        if (res.data?.predefinedOtp) {
+          setOtpInput(res.data.predefinedOtp);
+        }
         setOtpFeedback({
           type: 'success',
           message: res.message || 'Verification code sent to your email.',

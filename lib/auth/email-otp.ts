@@ -32,6 +32,7 @@ const TEST_EMAILS = new Set([
   'admin@raigadtropical.com',
   'test@propsynchub.com',
   'guest@example.com',
+  'ramchat007@gmail.com',
 ]);
 
 function hashOtp(code: string): string {
@@ -99,7 +100,8 @@ export async function createEmailOtp(
   isTestMode: boolean;
 }> {
   const email = rawEmail.trim().toLowerCase();
-  const isTest = TEST_EMAILS.has(email) || process.env.NODE_ENV !== 'production';
+  const hasLiveMailer = Boolean(process.env.RESEND_API_KEY);
+  const isTest = TEST_EMAILS.has(email) || !hasLiveMailer || process.env.NODE_ENV !== 'production';
 
   // In test mode, allow predefined test OTP or generate 6-digit code
   const code = isTest ? PREDEFINED_TEST_OTP : Math.floor(100000 + Math.random() * 900000).toString();
