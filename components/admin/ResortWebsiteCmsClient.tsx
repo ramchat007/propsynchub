@@ -261,6 +261,30 @@ export default function ResortWebsiteCmsClient({ tenant }: ResortWebsiteCmsClien
         </Link>
       </div>
 
+      {/* Settings Navigation Tabs */}
+      <div className="border-b border-stone-200 dark:border-neutral-800">
+        <nav className="-mb-px flex space-x-6">
+          <Link
+            href="/settings/team"
+            className="border-b-2 border-transparent pb-3 text-xs sm:text-sm font-semibold text-stone-500 hover:border-stone-300 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200 flex items-center gap-2"
+          >
+            <span>👥</span> Team &amp; Staff
+          </Link>
+          <Link
+            href="/settings/website"
+            className="border-b-2 border-emerald-600 pb-3 text-xs sm:text-sm font-bold text-emerald-600 dark:border-emerald-500 dark:text-emerald-400 flex items-center gap-2"
+          >
+            <span>🌐</span> Website CMS
+          </Link>
+          <Link
+            href="/settings"
+            className="border-b-2 border-transparent pb-3 text-xs sm:text-sm font-semibold text-stone-500 hover:border-stone-300 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200 flex items-center gap-2"
+          >
+            <span>💳</span> Payment Gateway
+          </Link>
+        </nav>
+      </div>
+
       <form onSubmit={handleSaveSettings} className="space-y-8">
         {/* ================================================================= */}
         {/* SECTION 1: HERO & BRAND STORY */}

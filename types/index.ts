@@ -181,3 +181,16 @@ export interface IncidentalCharge {
   created_at: string;
   updated_at?: string;
 }
+
+export interface TeamMember {
+  id: string;
+  tenant_id: string;
+  email: string;
+  full_name?: string | null;
+  mobile_number?: string | null;
+  role: UserRole;
+  avatar_url?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+

@@ -320,7 +320,7 @@ assert(
 console.log(`\n${YELLOW}▶ SUITE 6: P1.3 Role-Based Access Control & Navigation${RESET}`);
 
 const staffAllowedRoutes = ['/dashboard', '/bookings', '/calendar', '/inventory'];
-const staffBlockedRoutes = ['/settings', '/settings/website', '/audit-logs', '/reports'];
+const staffBlockedRoutes = ['/settings', '/settings/website', '/settings/team', '/audit-logs', '/reports'];
 
 function isRouteAllowedForRole(role, route) {
   if (role === 'superadmin' || role === 'tenant_admin') {

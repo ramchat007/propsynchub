@@ -205,6 +205,73 @@ class NotificationService {
       text: `Your reservation at ${resortName} is confirmed. Ref: #${bookingReference}. Check-in: ${checkInDate}, Check-out: ${checkOutDate}. Total: ₹${totalAmountInr.toLocaleString()}. Guest Portal: ${guestPortalUrl}`,
     });
   }
+
+  /**
+   * Sends Team Member / Staff Invitation Email
+   */
+  async sendTeamInviteEmail(params: TeamInviteEmailParams): Promise<{ success: boolean; error?: string }> {
+    const { to, inviteeName, resortName, role, inviterName, loginUrl } = params;
+    const roleLabel = role === 'tenant_admin' ? 'Resort Administrator' : 'Front Desk Staff';
+    const subject = `Invitation: Join ${resortName} as ${roleLabel} on PropSyncHub`;
+
+    const html = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 580px; margin: 0 auto; padding: 32px 24px; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 16px;">
+        <div style="background: linear-gradient(135deg, #059669 0%, #047857 100%); padding: 28px 24px; border-radius: 14px; text-align: center; color: #ffffff; margin-bottom: 24px;">
+          <h1 style="margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.02em;">Team Invitation</h1>
+          <p style="margin: 6px 0 0; font-size: 13px; opacity: 0.9;">PropSyncHub Resort Operations</p>
+        </div>
+
+        <p style="font-size: 15px; color: #111827; margin: 0 0 14px;">Hi <strong>${inviteeName}</strong>,</p>
+        <p style="font-size: 13px; color: #4b5563; line-height: 1.6; margin: 0 0 20px;">
+          ${inviterName ? `<strong>${inviterName}</strong> has invited you` : 'You have been invited'} to join the team at <strong>${resortName}</strong> as a <strong>${roleLabel}</strong>.
+        </p>
+
+        <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; margin-bottom: 24px; font-size: 13px;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 6px 0; color: #6b7280;">Property:</td>
+              <td style="padding: 6px 0; font-weight: 700; text-align: right; color: #111827;">${resortName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #6b7280;">Assigned Role:</td>
+              <td style="padding: 6px 0; font-weight: 700; text-align: right; color: #047857;">${roleLabel}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #6b7280;">Account Email:</td>
+              <td style="padding: 6px 0; font-weight: 600; text-align: right; color: #111827;">${to}</td>
+            </tr>
+          </table>
+        </div>
+
+        <div style="text-align: center; margin-bottom: 24px;">
+          <a href="${loginUrl}" style="display: inline-block; background: #047857; color: #ffffff; text-decoration: none; padding: 13px 28px; border-radius: 10px; font-size: 14px; font-weight: 700; box-shadow: 0 2px 4px rgba(4, 120, 87, 0.2);">
+            Sign In to Operations Desk &rarr;
+          </a>
+        </div>
+
+        <p style="font-size: 12px; color: #9ca3af; text-align: center; line-height: 1.5; margin: 0;">
+          You can sign in directly using Google One-Tap or by requesting an Email OTP with this email (${to}).
+        </p>
+      </div>
+    `;
+
+    return this.sendEmail({
+      to,
+      subject,
+      html,
+      text: `You have been invited to join ${resortName} as a ${roleLabel}. Sign in here: ${loginUrl}`,
+    });
+  }
+}
+
+export interface TeamInviteEmailParams {
+  to: string;
+  inviteeName: string;
+  resortName: string;
+  role: 'tenant_admin' | 'staff';
+  inviterName?: string;
+  loginUrl: string;
 }
 
 export const notifications = new NotificationService();
+
