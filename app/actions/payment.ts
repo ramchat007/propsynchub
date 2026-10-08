@@ -201,19 +201,19 @@ export async function createTenantRazorpayOrder(
     const settings = (tenant.settings as Record<string, unknown>) || {};
 
     // 1. Resolve Tenant Razorpay Key ID & Secret
+    const envKeyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID?.trim();
+    const isRealKeyId = envKeyId && envKeyId.startsWith('rzp_') && !envKeyId.includes('xxxx');
     const keyId =
       tenant.razorpay_test_key_id ||
       (settings.razorpay_test_key_id as string | undefined) ||
-      (process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID && process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID !== 'rzp_test_xxxxxxxxxxxxxx'
-        ? process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
-        : 'rzp_test_propsync_sandbox');
+      (isRealKeyId ? envKeyId : 'rzp_test_propsync_sandbox');
 
+    const envSecret = process.env.RAZORPAY_KEY_SECRET?.trim();
+    const isRealSecret = envSecret && !envSecret.startsWith('your_') && envSecret.length >= 8;
     const keySecret =
       tenant.razorpay_test_key_secret ||
       (settings.razorpay_test_key_secret as string | undefined) ||
-      (process.env.RAZORPAY_KEY_SECRET && process.env.RAZORPAY_KEY_SECRET !== 'your_razorpay_key_secret_here'
-        ? process.env.RAZORPAY_KEY_SECRET
-        : 'propsync_test_secret_sandbox');
+      (isRealSecret ? envSecret : 'propsync_test_secret_sandbox');
 
     // 2. Dynamically initialize Razorpay Node SDK with this specific resort's test credentials
     const razorpay = new Razorpay({
@@ -320,12 +320,12 @@ export async function verifyRazorpayPayment(payload: {
     }
 
     const settings = (rawTenant.settings as Record<string, unknown>) || {};
+    const envSecret = process.env.RAZORPAY_KEY_SECRET?.trim();
+    const isRealSecret = envSecret && !envSecret.startsWith('your_') && envSecret.length >= 8;
     const keySecret =
       rawTenant.razorpay_test_key_secret ||
       (settings.razorpay_test_key_secret as string | undefined) ||
-      (process.env.RAZORPAY_KEY_SECRET && process.env.RAZORPAY_KEY_SECRET !== 'your_razorpay_key_secret_here'
-        ? process.env.RAZORPAY_KEY_SECRET
-        : 'propsync_test_secret_sandbox');
+      (isRealSecret ? envSecret : 'propsync_test_secret_sandbox');
 
     // 2. Compute expected HMAC-SHA256 signature
     const expectedSignature = crypto
