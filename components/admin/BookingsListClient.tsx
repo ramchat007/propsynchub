@@ -24,6 +24,7 @@ export default function BookingsListClient({
 }: BookingsListClientProps) {
   const router = useRouter();
   const [bookings, setBookings] = useState<Booking[]>(initialBookings);
+  const todayStr = new Date().toISOString().split('T')[0];
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isPending, startTransition] = useTransition();
@@ -577,12 +578,31 @@ export default function BookingsListClient({
                             <>
                               <button
                                 type="button"
-                                onClick={() => handleStatusChange(b.id, 'checked_in')}
+                                onClick={() => {
+                                  if (b.check_in_date > todayStr) {
+                                    if (
+                                      !window.confirm(
+                                        `Arrival date for ${b.guest_name} is ${b.check_in_date} (future date). Do you want to perform early check-in today?`
+                                      )
+                                    ) {
+                                      return;
+                                    }
+                                  }
+                                  handleStatusChange(b.id, 'checked_in');
+                                }}
                                 disabled={isPending || isActionLoading}
-                                title="Check in guest & mark unit occupied on Room Rack"
-                                className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-2.5 py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-emerald-500 disabled:opacity-50"
+                                title={
+                                  b.check_in_date > todayStr
+                                    ? `Future reservation (${b.check_in_date}). Early check-in will occupy room today.`
+                                    : 'Check in guest & mark unit occupied on Room Rack'
+                                }
+                                className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-bold text-white shadow-2xs disabled:opacity-50 transition ${
+                                  b.check_in_date > todayStr
+                                    ? 'bg-amber-600 hover:bg-amber-500'
+                                    : 'bg-emerald-600 hover:bg-emerald-500'
+                                }`}
                               >
-                                <span>🔑 Check In</span>
+                                <span>{b.check_in_date > todayStr ? '⚡ Early Check In' : '🔑 Check In'}</span>
                               </button>
                               <button
                                 type="button"

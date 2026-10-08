@@ -520,7 +520,7 @@ export default function ResortTeamClient({
                   </label>
                   <input
                     type="tel"
-                    placeholder="e.g. +91 98201 60376"
+                    placeholder="e.g. +91 98000 00000"
                     value={inviteMobile}
                     onChange={(e) => setInviteMobile(e.target.value)}
                     className="mt-1.5 w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-xs font-medium text-neutral-900 placeholder:text-stone-400 focus:border-emerald-500 focus:outline-hidden dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"

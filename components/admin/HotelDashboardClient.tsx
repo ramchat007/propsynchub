@@ -109,10 +109,10 @@ export default function HotelDashboardClient({
         (b) => b.room_id === room.id && b.booking_status !== 'cancelled'
       );
 
-      // 1. In-House Checked In OR Active Stay covering today
+      // 1. In-House Checked In (arrived today or earlier) OR Active Stay covering today
       const inHouseBooking = roomBookings.find(
         (b) =>
-          b.booking_status === 'checked_in' ||
+          (b.booking_status === 'checked_in' && b.check_in_date <= todayStr) ||
           (b.booking_status === 'confirmed' &&
             b.check_in_date <= todayStr &&
             b.check_out_date > todayStr)
@@ -125,11 +125,13 @@ export default function HotelDashboardClient({
           b.check_in_date === todayStr
       );
 
-      // 3. Soonest upcoming reservation on the books
+      // 3. Soonest upcoming reservation on the books (future check-in date)
       const futureBookings = roomBookings
         .filter(
           (b) =>
-            (b.booking_status === 'confirmed' || b.booking_status === 'pending') &&
+            (b.booking_status === 'confirmed' ||
+              b.booking_status === 'pending' ||
+              b.booking_status === 'checked_in') &&
             b.check_in_date > todayStr
         )
         .sort((a, b) => a.check_in_date.localeCompare(b.check_in_date));
@@ -330,6 +332,8 @@ export default function HotelDashboardClient({
       setSelectedRoomForWalkIn(firstAvailable);
       setWalkInSelectedRoomId(firstAvailable.id);
     }
+    setWalkInCheckIn(getToday());
+    setWalkInCheckOut(getTomorrow());
     setIsWalkInModalOpen(true);
   };
 
@@ -346,11 +350,18 @@ export default function HotelDashboardClient({
       return;
     }
 
+    if (walkInCheckOut <= walkInCheckIn) {
+      addToast('error', 'Check-out date must be strictly after check-in date.');
+      return;
+    }
+
     const checkInDate = new Date(walkInCheckIn);
     const checkOutDate = new Date(walkInCheckOut);
     const diffMs = checkOutDate.getTime() - checkInDate.getTime();
     const nights = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)));
     const totalAmount = nights * (targetRoom.base_price_inr || 0);
+
+    const isFutureArrival = walkInCheckIn > todayStr;
 
     startTransition(async () => {
       const res = await createReservation({
@@ -365,11 +376,25 @@ export default function HotelDashboardClient({
         guestEmail: walkInGuestEmail,
         totalAmount,
         specialRequests: walkInSpecialRequests,
+        paymentPolicy: 'PAY_AT_PROPERTY',
       });
 
       if (res.success && res.booking) {
-        await updateBookingStatus(res.booking.id, tenantId, 'checked_in');
-        addToast('success', `Guest ${walkInGuestName} checked in to ${targetRoom.name}!`);
+        if (!isFutureArrival) {
+          // Arriving today: immediate front desk check-in
+          await updateBookingStatus(res.booking.id, tenantId, 'checked_in');
+          addToast(
+            'success',
+            `Guest ${walkInGuestName} checked in to ${targetRoom.name}! Room is now occupied.`
+          );
+        } else {
+          // Future arrival: save as upcoming confirmed reservation (room remains vacant/available today)
+          await updateBookingStatus(res.booking.id, tenantId, 'confirmed');
+          addToast(
+            'success',
+            `Upcoming reservation confirmed for ${walkInGuestName} (${walkInCheckIn} to ${walkInCheckOut}) in ${targetRoom.name}! Room remains available today.`
+          );
+        }
         setIsWalkInModalOpen(false);
         setWalkInGuestName('');
         setWalkInGuestMobile('');
@@ -377,7 +402,7 @@ export default function HotelDashboardClient({
         setWalkInSpecialRequests('');
         router.refresh();
       } else {
-        addToast('error', res.error || 'Failed to create walk-in reservation.');
+        addToast('error', res.error || 'Failed to create reservation.');
       }
     });
   };
@@ -411,7 +436,7 @@ export default function HotelDashboardClient({
             onClick={() => handleOpenWalkIn()}
             className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-500 active:scale-95"
           >
-            <span>➕ Walk-In Check-In</span>
+            <span>➕ Walk-In / Reserve</span>
           </button>
 
           <Link
@@ -1094,18 +1119,27 @@ export default function HotelDashboardClient({
       </section>
 
       {/* =================================================================== */}
-      {/* 5. STREAMLINED WALK-IN CHECK-IN MODAL                               */}
+      {/* 5. STREAMLINED WALK-IN CHECK-IN & RESERVATION MODAL                 */}
       {/* =================================================================== */}
       {isWalkInModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
           <div className="w-full max-w-lg rounded-2xl border border-stone-200 bg-white p-6 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
             <div className="flex items-center justify-between border-b border-stone-100 pb-3 dark:border-neutral-800">
               <div>
-                <h3 className="text-base font-bold text-stone-900 dark:text-white">
-                  ➕ Walk-In Guest Check-In {selectedRoomForWalkIn ? `— ${selectedRoomForWalkIn.name}` : ''}
-                </h3>
-                <p className="text-xs text-stone-500">
-                  Instant registration for guests arriving at front desk.
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-stone-900 dark:text-white">
+                    {walkInCheckIn > todayStr ? '📅 Book Upcoming Reservation' : '➕ Walk-In Guest Check-In'}
+                  </h3>
+                  {selectedRoomForWalkIn && (
+                    <span className="rounded-md bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-700 dark:bg-neutral-800 dark:text-stone-300">
+                      {selectedRoomForWalkIn.name}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-stone-500">
+                  {walkInCheckIn > todayStr
+                    ? `Upcoming stay starting ${walkInCheckIn}. Room remains available today until arrival.`
+                    : 'Instant registration and immediate check-in for guests arriving today at front desk.'}
                 </p>
               </div>
               <button
@@ -1162,7 +1196,7 @@ export default function HotelDashboardClient({
                   <input
                     type="tel"
                     required
-                    placeholder="+91 98201 60376"
+                    placeholder="+91 98000 00000"
                     value={walkInGuestMobile}
                     onChange={(e) => setWalkInGuestMobile(e.target.value)}
                     className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-medium dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
@@ -1188,23 +1222,33 @@ export default function HotelDashboardClient({
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-bold text-stone-700 dark:text-stone-300">
-                    Check-in Date
+                    Check-in Date *
                   </label>
                   <input
                     type="date"
                     required
+                    min={todayStr}
                     value={walkInCheckIn}
-                    onChange={(e) => setWalkInCheckIn(e.target.value)}
+                    onChange={(e) => {
+                      const newCheckIn = e.target.value;
+                      setWalkInCheckIn(newCheckIn);
+                      if (walkInCheckOut <= newCheckIn) {
+                        const nextD = new Date(newCheckIn);
+                        nextD.setDate(nextD.getDate() + 1);
+                        setWalkInCheckOut(nextD.toISOString().split('T')[0]);
+                      }
+                    }}
                     className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-medium dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-stone-700 dark:text-stone-300">
-                    Check-out Date
+                    Check-out Date *
                   </label>
                   <input
                     type="date"
                     required
+                    min={walkInCheckIn || todayStr}
                     value={walkInCheckOut}
                     onChange={(e) => setWalkInCheckOut(e.target.value)}
                     className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-medium dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
@@ -1256,6 +1300,31 @@ export default function HotelDashboardClient({
                 />
               </div>
 
+              {/* Dynamic Status Mode Banner */}
+              <div
+                className={`rounded-xl border p-3 text-xs transition ${
+                  walkInCheckIn > todayStr
+                    ? 'border-amber-200 bg-amber-50/70 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200'
+                    : 'border-emerald-200 bg-emerald-50/70 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200'
+                }`}
+              >
+                <div className="flex items-start gap-2.5">
+                  <span className="text-base">{walkInCheckIn > todayStr ? '📅' : '⚡'}</span>
+                  <div>
+                    <p className="font-bold">
+                      {walkInCheckIn > todayStr
+                        ? 'Future Stay Mode (Upcoming Reservation)'
+                        : 'Immediate Walk-In Check-In Mode'}
+                    </p>
+                    <p className="mt-0.5 text-[11px] opacity-90">
+                      {walkInCheckIn > todayStr
+                        ? `Reservation will be confirmed for ${walkInCheckIn}. Unit ${selectedRoomForWalkIn ? `"${selectedRoomForWalkIn.name}"` : ''} remains VACANT & AVAILABLE today and will NOT be marked occupied.`
+                        : `Guest is arriving today. Unit ${selectedRoomForWalkIn ? `"${selectedRoomForWalkIn.name}"` : ''} will be checked in immediately and marked OCCUPIED today.`}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-stone-100 dark:border-neutral-800">
                 <button
                   type="button"
@@ -1267,9 +1336,17 @@ export default function HotelDashboardClient({
                 <button
                   type="submit"
                   disabled={isPending}
-                  className="rounded-xl bg-emerald-600 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-500 disabled:opacity-50"
+                  className={`rounded-xl px-5 py-2 text-xs font-bold text-white shadow-xs disabled:opacity-50 transition ${
+                    walkInCheckIn > todayStr
+                      ? 'bg-amber-600 hover:bg-amber-500'
+                      : 'bg-emerald-600 hover:bg-emerald-500'
+                  }`}
                 >
-                  {isPending ? 'Registering...' : 'Confirm Check-In ➔'}
+                  {isPending
+                    ? 'Processing...'
+                    : walkInCheckIn > todayStr
+                    ? '📅 Confirm Upcoming Reservation ➔'
+                    : '⚡ Complete Immediate Check-In ➔'}
                 </button>
               </div>
             </form>

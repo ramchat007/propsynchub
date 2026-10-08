@@ -557,7 +557,7 @@ export default function ResortWebsiteCmsClient({ tenant }: ResortWebsiteCmsClien
                 type="text"
                 value={contactPhone}
                 onChange={(e) => setContactPhone(e.target.value)}
-                placeholder="+91 98201 60376"
+                placeholder="+91 98000 00000"
                 className="mt-1.5 w-full rounded-xl border border-neutral-300 bg-transparent px-3.5 py-2.5 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
               />
             </div>

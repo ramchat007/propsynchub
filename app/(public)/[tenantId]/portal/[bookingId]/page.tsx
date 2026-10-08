@@ -54,7 +54,7 @@ export default async function GuestPortalPage({ params }: GuestPortalProps) {
         subdomain: 'raigad-tropical',
         custom_domain: null,
         contact_email: 'contact@raigadtropical.com',
-        contact_phone: '+91 98201 60376',
+        contact_phone: '+91 98000 00000',
         is_active: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

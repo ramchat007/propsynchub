@@ -85,7 +85,7 @@ export default function InquiryFormClient() {
           <input
             type="text"
             required
-            placeholder="e.g. Rupesh Mestry"
+            placeholder="e.g. Rohan Sharma"
             value={formData.contactPerson}
             onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
             className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3.5 py-2.5 text-xs text-white placeholder-neutral-500 focus:border-emerald-500 focus:outline-none"
@@ -100,7 +100,7 @@ export default function InquiryFormClient() {
           <input
             type="tel"
             required
-            placeholder="e.g. +91 98201 60376"
+            placeholder="e.g. +91 98000 00000"
             value={formData.whatsappNumber}
             onChange={(e) => setFormData({ ...formData, whatsappNumber: e.target.value })}
             className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3.5 py-2.5 text-xs text-white placeholder-neutral-500 focus:border-emerald-500 focus:outline-none font-mono"

@@ -43,9 +43,9 @@ export default function BookingInterfaceClient({
   // Branding & contact settings
   const settings = (tenant.settings as unknown as ShowcaseSettings) || {};
   const primaryColor = settings.primary_color_hex || '#c0395b';
-  const contactPhone = settings.contact_phone || tenant.contact_phone || '+91 98201 60376';
+  const contactPhone = settings.contact_phone || tenant.contact_phone || '+91 98000 00000';
   const cleanPhone = contactPhone.replace(/\D/g, '');
-  const contactEmail = settings.contact_email || tenant.contact_email || 'stay@raigadtropical.com';
+  const contactEmail = settings.contact_email || tenant.contact_email || 'concierge@propsynchub.com';
 
   // Helper date generators (Format YYYY-MM-DD)
   const getToday = () => new Date().toISOString().split('T')[0];
