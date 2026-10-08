@@ -49,13 +49,21 @@ export default async function AdminLayout({
     );
   }
 
-  const resortName = auth.tenant.name;
-  const resortSubdomain = auth.tenant.subdomain;
-  const userRole = auth.role;
+  const resortName =
+    typeof auth.tenant?.name === 'string' && auth.tenant.name.trim()
+      ? auth.tenant.name.trim()
+      : 'Resort PMS';
+  const resortSubdomain =
+    typeof auth.tenant?.subdomain === 'string' && auth.tenant.subdomain.trim()
+      ? auth.tenant.subdomain.trim()
+      : 'raigad-tropical';
+  const userRole = auth.role || 'tenant_admin';
   const primaryBrandColor =
-    (auth.tenant.settings?.primary_color_hex as string) ||
-    (auth.tenant.settings?.primaryColorHex as string) ||
-    '#059669';
+    typeof auth.tenant?.settings?.primary_color_hex === 'string' && auth.tenant.settings.primary_color_hex.trim()
+      ? auth.tenant.settings.primary_color_hex.trim()
+      : typeof auth.tenant?.settings?.primaryColorHex === 'string' && auth.tenant.settings.primaryColorHex.trim()
+      ? auth.tenant.settings.primaryColorHex.trim()
+      : '#059669';
 
   return (
     <div

@@ -21,6 +21,15 @@ export default function AdminSidebarNav({
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  const safeResortName = typeof resortName === 'string' && resortName.trim() ? resortName.trim() : 'Resort PMS';
+  const safeSubdomain = typeof resortSubdomain === 'string' && resortSubdomain.trim() ? resortSubdomain.trim() : 'raigad-tropical';
+  const safeBrandColor = typeof primaryBrandColor === 'string' && primaryBrandColor.trim() ? primaryBrandColor.trim() : '#059669';
+  const lettermark = safeResortName.charAt(0).toUpperCase() || 'R';
+
+  const isHex6 = /^#[0-9A-Fa-f]{6}$/.test(safeBrandColor);
+  const alphaBg = isHex6 ? `${safeBrandColor}18` : 'rgba(5, 150, 105, 0.1)';
+  const alphaBorder = isHex6 ? `${safeBrandColor}40` : 'rgba(5, 150, 105, 0.25)';
+
   const navLinks = [
     {
       name: 'Dashboard',
@@ -138,17 +147,17 @@ export default function AdminSidebarNav({
             <div className="flex h-20 items-center gap-3 border-b border-white/10 px-6">
               <span
                 className="flex h-11 w-11 items-center justify-center rounded-2xl text-xl font-black text-white shadow-md transition-all"
-                style={{ backgroundColor: primaryBrandColor }}
+                style={{ backgroundColor: safeBrandColor }}
               >
-                {resortName.charAt(0).toUpperCase()}
+                {lettermark}
               </span>
               <div className="min-w-0">
                 <p className="truncate font-serif text-base font-bold text-white">
-                  {resortName}
+                  {safeResortName}
                 </p>
                 <p
                   className="text-[10px] font-bold uppercase tracking-[0.18em]"
-                  style={{ color: primaryBrandColor }}
+                  style={{ color: safeBrandColor }}
                 >
                   {userRole === 'staff' ? 'Front Desk Suite' : 'Resort Admin Suite'}
                 </p>
@@ -170,7 +179,7 @@ export default function AdminSidebarNav({
                     href={item.href}
                     style={
                       isActive
-                        ? { backgroundColor: primaryBrandColor, color: '#ffffff' }
+                        ? { backgroundColor: safeBrandColor, color: '#ffffff' }
                         : undefined
                     }
                     className={`flex min-h-[44px] items-center gap-3 rounded-xl px-4 text-xs font-bold transition ${
@@ -193,9 +202,9 @@ export default function AdminSidebarNav({
               <Link
                 href="/onboarding"
                 style={{
-                  backgroundColor: `${primaryBrandColor}15`,
-                  borderColor: `${primaryBrandColor}40`,
-                  color: primaryBrandColor,
+                  backgroundColor: alphaBg,
+                  borderColor: alphaBorder,
+                  color: safeBrandColor,
                 }}
                 className="flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-xl border text-xs font-bold transition hover:opacity-90"
               >
@@ -204,7 +213,7 @@ export default function AdminSidebarNav({
             )}
 
             <Link
-              href={`/${resortSubdomain}`}
+              href={`/${safeSubdomain}`}
               target="_blank"
               className="flex min-h-[38px] w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 text-xs font-semibold text-neutral-200 transition hover:bg-white/10 hover:text-white"
             >
@@ -234,14 +243,14 @@ export default function AdminSidebarNav({
             </svg>
           </button>
           <span className="font-bold text-sm text-neutral-900 dark:text-white truncate">
-            {resortName}
+            {safeResortName}
           </span>
         </div>
 
         <Link
-          href={`/${resortSubdomain}`}
+          href={`/${safeSubdomain}`}
           target="_blank"
-          style={{ backgroundColor: primaryBrandColor }}
+          style={{ backgroundColor: safeBrandColor }}
           className="rounded-lg px-3 py-1.5 text-xs font-bold text-white shadow-xs"
         >
           View Site ↗
@@ -254,7 +263,7 @@ export default function AdminSidebarNav({
           <div className="flex h-full w-72 flex-col justify-between bg-neutral-950 p-5 text-white">
             <div>
               <div className="flex items-center justify-between border-b border-white/10 pb-4">
-                <span className="font-bold text-sm">{resortName}</span>
+                <span className="font-bold text-sm">{safeResortName}</span>
                 <button
                   type="button"
                   onClick={() => setMobileMenuOpen(false)}
@@ -285,9 +294,9 @@ export default function AdminSidebarNav({
                   href="/onboarding"
                   onClick={() => setMobileMenuOpen(false)}
                   style={{
-                    backgroundColor: `${primaryBrandColor}15`,
-                    borderColor: `${primaryBrandColor}40`,
-                    color: primaryBrandColor,
+                    backgroundColor: alphaBg,
+                    borderColor: alphaBorder,
+                    color: safeBrandColor,
                   }}
                   className="flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-xl border text-xs font-bold transition hover:opacity-90"
                 >

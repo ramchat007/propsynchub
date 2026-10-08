@@ -131,6 +131,12 @@ export async function middleware(request: NextRequest) {
     }
   );
 
+  // Server Actions handle their own auth; bypass middleware redirect to preserve RSC action stream
+  const isServerAction = request.headers.has('next-action');
+  if (isServerAction) {
+    return response;
+  }
+
   // Check auth session for protected routes, onboarding, or login page
   let user = null;
   if (isAdminRoute || isLoginRoute || isOnboardingRoute) {
@@ -142,15 +148,26 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Unauthorized access to admin routes -> Redirect to mobile login page
+  // Unauthorized access to admin routes
   if (isAdminRoute && !user) {
+    const isRscRequest = request.headers.has('rsc') || request.nextUrl.searchParams.has('_rsc');
+    // If it's an RSC prefetch/navigation, let the Server Component guard handle native redirect digest
+    if (isRscRequest) {
+      return response;
+    }
+
     const loginUrl = new URL('/login', request.url);
     loginUrl.search = `?redirectTo=${encodeURIComponent(pathname + search)}`;
     return NextResponse.redirect(loginUrl);
   }
 
-  // Unauthorized access to onboarding -> Redirect to mobile login page
+  // Unauthorized access to onboarding -> Redirect to login page
   if (isOnboardingRoute && !user) {
+    const isRscRequest = request.headers.has('rsc') || request.nextUrl.searchParams.has('_rsc');
+    if (isRscRequest) {
+      return response;
+    }
+
     const loginUrl = new URL('/login', request.url);
     loginUrl.search = `?callbackUrl=${encodeURIComponent(pathname + search)}`;
     return NextResponse.redirect(loginUrl);
