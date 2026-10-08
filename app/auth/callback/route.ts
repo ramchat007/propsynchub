@@ -104,7 +104,37 @@ export async function GET(request: Request) {
         return NextResponse.redirect(`${origin}${next}`);
       }
 
-      // 3. UNAUTHORIZED USER: Not an approved resort manager or staff member
+      // 3. Check if user's email matches ANY active resort's official contact_email
+      if (email) {
+        const { data: tenantByEmail } = await adminDb
+          .from('tenants')
+          .select('id, name, contact_phone')
+          .ilike('contact_email', email)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (tenantByEmail) {
+          // Provision or link profile as tenant_admin for this resort
+          try {
+            await adminDb.from('profiles').upsert(
+              {
+                id: data.user.id,
+                tenant_id: tenantByEmail.id,
+                mobile_number: tenantByEmail.contact_phone || '+919999999999',
+                full_name: email.split('@')[0],
+                role: 'tenant_admin',
+              },
+              { onConflict: 'id' }
+            );
+          } catch (e) {
+            console.warn('[OAuth Callback] Error linking dynamic resort admin profile:', e);
+          }
+
+          return NextResponse.redirect(`${origin}${next}`);
+        }
+      }
+
+      // 4. UNAUTHORIZED USER: Not an approved resort manager or staff member
       // Sign out to revoke the active session cookie
       await supabase.auth.signOut();
 

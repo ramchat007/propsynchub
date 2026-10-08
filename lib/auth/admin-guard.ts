@@ -110,7 +110,59 @@ export async function getAuthenticatedAdminContext(): Promise<AuthenticatedAdmin
     };
   }
 
-  // 2. For all other users, inspect their assigned profile in PostgreSQL
+  // 2. Check if user's email matches ANY active resort's official contact_email
+  if (email) {
+    const { data: tenantByEmail } = await adminDb
+      .from('tenants')
+      .select('*')
+      .ilike('contact_email', email)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (tenantByEmail) {
+      // Synchronize database profile as tenant_admin for this resort
+      try {
+        const { data: existingProfile } = await adminDb
+          .from('profiles')
+          .select('id, role, tenant_id')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (!existingProfile) {
+          await adminDb.from('profiles').insert({
+            id: user.id,
+            tenant_id: tenantByEmail.id,
+            mobile_number: tenantByEmail.contact_phone || '+919999999999',
+            full_name: email.split('@')[0],
+            role: 'tenant_admin',
+          });
+        } else if (
+          existingProfile.role !== 'tenant_admin' ||
+          existingProfile.tenant_id !== tenantByEmail.id
+        ) {
+          await adminDb
+            .from('profiles')
+            .update({
+              role: 'tenant_admin',
+              tenant_id: tenantByEmail.id,
+            })
+            .eq('id', user.id);
+        }
+      } catch (profErr) {
+        console.warn('[AdminGuard] Error linking dynamic resort admin profile:', profErr);
+      }
+
+      return {
+        authorized: true,
+        user: { id: user.id, email: user.email },
+        role: 'tenant_admin',
+        tenantId: tenantByEmail.id,
+        tenant: tenantByEmail as unknown as Tenant,
+      };
+    }
+  }
+
+  // 3. For all other users, inspect their assigned profile in PostgreSQL
   const { data: profile } = await adminDb
     .from('profiles')
     .select('tenant_id, role')
@@ -132,7 +184,7 @@ export async function getAuthenticatedAdminContext(): Promise<AuthenticatedAdmin
     };
   }
 
-  // 3. Fetch the tenant assigned to this staff member
+  // 4. Fetch the tenant assigned to this staff member
   const { data: staffTenant } = await adminDb
     .from('tenants')
     .select('*')

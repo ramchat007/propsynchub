@@ -157,13 +157,26 @@ export async function verifyEmailOtpAction(
     }
 
     // 3. Ensure profile exists and check tenant link
-    const targetTenantId = tenantId || process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID || '2f002373-c7f2-4127-842f-4bb20d7a1b64';
     const ADMIN_EMAILS = [
       'ramchat007@gmail.com',
       'admin@raigadtropical.com',
       'contact@raigadtropical.com',
     ];
-    const isAdminUser = ADMIN_EMAILS.includes(email) || email.includes('admin');
+    let isAdminUser = ADMIN_EMAILS.includes(email) || email.includes('admin');
+    let targetTenantId = tenantId || process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID || '2f002373-c7f2-4127-842f-4bb20d7a1b64';
+
+    // Check if email matches any tenant's official contact_email
+    const { data: matchedTenant } = await adminDb
+      .from('tenants')
+      .select('id, name')
+      .ilike('contact_email', email)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (matchedTenant) {
+      targetTenantId = matchedTenant.id;
+      isAdminUser = true;
+    }
 
     const { data: profile } = await adminDb
       .from('profiles')
