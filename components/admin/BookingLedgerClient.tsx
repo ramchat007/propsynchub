@@ -384,7 +384,7 @@ export default function BookingLedgerClient({ initialDetails }: BookingLedgerCli
             <div>
               <span className="block text-[11px] text-neutral-400">Assigned Room</span>
               <span className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
-                {room?.name || 'Unit #' + booking.room_id.slice(0, 6)} {room?.room_number ? `(${room.room_number})` : ''}
+                {room?.name || (booking.room_id ? 'Unit #' + booking.room_id.slice(0, 6) : 'Unassigned Unit')} {room?.room_number ? `(${room.room_number})` : ''}
               </span>
             </div>
             <div className="grid grid-cols-2 gap-2">

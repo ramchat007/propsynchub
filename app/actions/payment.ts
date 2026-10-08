@@ -365,12 +365,14 @@ export async function verifyRazorpayPayment(payload: {
       updated_at: new Date().toISOString(),
     };
 
-    let { data: updatedBooking, error: updateErr } = await adminDb
+    let updatedBooking = null;
+    const { data: initialBooking, error: updateErr } = await adminDb
       .from('bookings')
       .update(updateBookingPayload)
       .eq('id', bookingId)
       .select()
       .single();
+    updatedBooking = initialBooking;
 
     if (updateErr) {
       // Fallback without paid/balance columns if pending DB schema sync

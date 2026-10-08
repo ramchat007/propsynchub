@@ -14,6 +14,7 @@ export default async function AdminLayout({
 }) {
   let resortName = 'Raigad Tropical Resort';
   let resortSubdomain = 'raigad-tropical';
+  let userRole: 'superadmin' | 'tenant_admin' | 'staff' | 'guest' = 'tenant_admin';
 
   try {
     const supabase = await createServerSupabaseClient();
@@ -23,7 +24,6 @@ export default async function AdminLayout({
 
     const adminDb = createAdminClient();
     let tenantId: string | null = null;
-    let userRole: 'superadmin' | 'tenant_admin' | 'staff' | 'guest' = 'tenant_admin';
 
     if (user) {
       const { data: profile } = await supabase

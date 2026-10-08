@@ -368,11 +368,13 @@ export async function createReservation(payload: {
       special_requests: specialRequests?.trim() || null,
     };
 
-    let { data: booking, error: insertError } = await adminDb
+    let booking = null;
+    const { data: initialBooking, error: insertError } = await adminDb
       .from('bookings')
       .insert(insertPayload)
       .select()
       .single();
+    booking = initialBooking;
 
     if (insertError) {
       // Fallback if newly added columns are not yet in the DB schema
@@ -699,6 +701,7 @@ export async function confirmPayAtPropertyReservation(
       .from('bookings')
       .select('*, tenant:tenants(name, contact_phone)')
       .eq('id', bookingId)
+      .eq('tenant_id', tenantId)
       .single();
 
     if (error || !booking) {
@@ -734,13 +737,14 @@ export async function confirmPayAtPropertyReservation(
     if (booking.guest_email) {
       const diffMs = new Date(booking.check_out_date).getTime() - new Date(booking.check_in_date).getTime();
       const nights = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+      const tenantInfo = booking.tenant as { name?: string; contact_phone?: string } | null;
 
       try {
         await notifications.sendBookingConfirmationEmail({
           to: booking.guest_email,
           guestName: booking.guest_name,
           bookingReference: booking.id.slice(0, 8).toUpperCase(),
-          resortName: (booking as any).tenant?.name || 'Resort Desk',
+          resortName: tenantInfo?.name || 'Resort Desk',
           categoryName: 'Confirmed Reservation',
           checkInDate: booking.check_in_date,
           checkOutDate: booking.check_out_date,
@@ -750,7 +754,7 @@ export async function confirmPayAtPropertyReservation(
           totalAmountInr: total,
           paymentStatus: 'Pay At Property (Balance: ₹' + total.toLocaleString('en-IN') + ')',
           guestPortalUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/login`,
-          contactPhone: (booking as any).tenant?.contact_phone || undefined,
+          contactPhone: tenantInfo?.contact_phone || undefined,
         });
       } catch (err) {
         console.warn('[Confirmation Email Error]:', err);

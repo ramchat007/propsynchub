@@ -96,6 +96,9 @@ export default function BookingInterfaceClient({
     id: string;
     roomName: string;
     totalAmount: number;
+    paidAmount?: number;
+    balanceAmount?: number;
+    paymentPolicy?: string;
     guestName: string;
     guestMobile: string;
     guestEmail: string;
@@ -106,6 +109,7 @@ export default function BookingInterfaceClient({
     children: number;
   } | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [paymentPolicyChoice, setPaymentPolicyChoice] = useState<'FULL_PAYMENT' | 'ADVANCE' | 'PAY_AT_PROPERTY'>('FULL_PAYMENT');
 
   // 6. Offline Callback Request (when sold out)
   const [callbackSent, setCallbackSent] = useState(false);
@@ -286,9 +290,16 @@ export default function BookingInterfaceClient({
 
     setCheckoutError(null);
     startBookingTransition(async () => {
+      const advanceAmount = Math.round(selectedRoom.grandTotal * 0.5);
+      const amountToCharge =
+        paymentPolicyChoice === 'ADVANCE'
+          ? advanceAmount
+          : selectedRoom.grandTotal;
+
       const res = await createReservation({
         tenantId: tenant.id,
         roomId: selectedRoom.id,
+        categoryId: (selectedRoom as { category_id?: string; category?: { id?: string } }).category_id || selectedRoom.category?.id || null,
         checkIn,
         checkOut,
         adults,
@@ -297,6 +308,13 @@ export default function BookingInterfaceClient({
         guestMobile: guestMobile.trim(),
         guestEmail: guestEmail.trim(),
         totalAmount: selectedRoom.grandTotal,
+        paymentPolicy: paymentPolicyChoice,
+        paidAmount:
+          paymentPolicyChoice === 'FULL_PAYMENT'
+            ? selectedRoom.grandTotal
+            : paymentPolicyChoice === 'ADVANCE'
+            ? advanceAmount
+            : 0,
         specialRequests: specialRequests.trim(),
       });
 
@@ -305,10 +323,32 @@ export default function BookingInterfaceClient({
         return;
       }
 
+      if (paymentPolicyChoice === 'PAY_AT_PROPERTY') {
+        setBookingConfirmation({
+          id: res.booking.id,
+          roomName: selectedRoom.name,
+          totalAmount: res.booking.total_amount_inr,
+          paidAmount: 0,
+          balanceAmount: res.booking.total_amount_inr,
+          paymentPolicy: 'PAY_AT_PROPERTY',
+          guestName: res.booking.guest_name,
+          guestMobile: res.booking.guest_mobile_number,
+          guestEmail: res.booking.guest_email || guestEmail,
+          checkIn,
+          checkOut,
+          nights,
+          adults,
+          children,
+        });
+        setIsCheckoutOpen(false);
+        return;
+      }
+
+      // Online payment via Razorpay (Full or Advance)
       const payRes = await createTenantRazorpayOrder(
         res.booking.id,
         tenant.id,
-        selectedRoom.grandTotal
+        amountToCharge
       );
 
       const generatedOrderId = payRes.data?.orderId || `order_${res.booking.id.slice(0, 8)}`;
@@ -328,6 +368,9 @@ export default function BookingInterfaceClient({
         id: res.booking.id,
         roomName: selectedRoom.name,
         totalAmount: res.booking.total_amount_inr,
+        paidAmount: amountToCharge,
+        balanceAmount: Math.max(0, res.booking.total_amount_inr - amountToCharge),
+        paymentPolicy: paymentPolicyChoice,
         guestName: res.booking.guest_name,
         guestMobile: res.booking.guest_mobile_number,
         guestEmail: res.booking.guest_email || guestEmail,
@@ -495,10 +538,25 @@ export default function BookingInterfaceClient({
                     <span className="text-stone-500">Confirmation Sent To</span>
                     <span className="font-semibold text-stone-800 dark:text-stone-200">{bookingConfirmation.guestEmail}</span>
                   </div>
-                  <div className="flex justify-between pt-3 text-sm font-black">
-                    <span>Total Amount Paid</span>
-                    <span className="text-emerald-600 dark:text-emerald-400">₹{bookingConfirmation.totalAmount.toLocaleString()}</span>
+                  <div className="flex justify-between py-2 text-xs">
+                    <span className="text-stone-500">Total Stay Charges</span>
+                    <span className="font-bold text-stone-900 dark:text-white">₹{bookingConfirmation.totalAmount.toLocaleString()}</span>
                   </div>
+                  <div className="flex justify-between py-2 text-xs">
+                    <span className="text-stone-500">Paid Amount</span>
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400">₹{(bookingConfirmation.paidAmount ?? bookingConfirmation.totalAmount).toLocaleString()}</span>
+                  </div>
+                  {bookingConfirmation.balanceAmount !== undefined && bookingConfirmation.balanceAmount > 0 ? (
+                    <div className="flex justify-between pt-2.5 text-sm font-black border-t border-stone-200/80 dark:border-neutral-800">
+                      <span className="text-amber-800 dark:text-amber-400">Balance Due on Arrival</span>
+                      <span className="text-amber-700 dark:text-amber-300">₹{bookingConfirmation.balanceAmount.toLocaleString()}</span>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between pt-2.5 text-sm font-black border-t border-stone-200/80 dark:border-neutral-800">
+                      <span className="text-emerald-700 dark:text-emerald-400">Folio Balance Status</span>
+                      <span className="text-emerald-600 dark:text-emerald-400">✓ Fully Paid</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 text-xs text-emerald-950 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200 space-y-1.5">
@@ -1129,6 +1187,89 @@ export default function BookingInterfaceClient({
                   />
                 </div>
 
+                {/* P1.2 Configurable Payment Policy Selection */}
+                <div className="space-y-2 pt-1">
+                  <label className="block text-xs font-bold text-stone-700 dark:text-neutral-300">
+                    Payment Preference *
+                  </label>
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                    {/* 1. Full Online Payment */}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setPaymentPolicyChoice('FULL_PAYMENT')}
+                      className={`cursor-pointer rounded-xl border p-3 text-left transition select-none ${
+                        paymentPolicyChoice === 'FULL_PAYMENT'
+                          ? 'border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-500/20 dark:border-emerald-500 dark:bg-emerald-950/40'
+                          : 'border-stone-200 bg-white hover:bg-stone-50 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-neutral-750'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase text-stone-500 dark:text-stone-400">100% Online</span>
+                        {paymentPolicyChoice === 'FULL_PAYMENT' && (
+                          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">✓</span>
+                        )}
+                      </div>
+                      <div className="mt-1 text-sm font-black text-stone-900 dark:text-white">
+                        ₹{selectedRoom.grandTotal.toLocaleString()}
+                      </div>
+                      <p className="mt-0.5 text-[10px] text-stone-500 dark:text-stone-400">
+                        Zero due at check-in
+                      </p>
+                    </div>
+
+                    {/* 2. 50% Advance Online */}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setPaymentPolicyChoice('ADVANCE')}
+                      className={`cursor-pointer rounded-xl border p-3 text-left transition select-none ${
+                        paymentPolicyChoice === 'ADVANCE'
+                          ? 'border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-500/20 dark:border-emerald-500 dark:bg-emerald-950/40'
+                          : 'border-stone-200 bg-white hover:bg-stone-50 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-neutral-750'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase text-stone-500 dark:text-stone-400">50% Advance</span>
+                        {paymentPolicyChoice === 'ADVANCE' && (
+                          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">✓</span>
+                        )}
+                      </div>
+                      <div className="mt-1 text-sm font-black text-stone-900 dark:text-white">
+                        ₹{Math.round(selectedRoom.grandTotal * 0.5).toLocaleString()}
+                      </div>
+                      <p className="mt-0.5 text-[10px] text-stone-500 dark:text-stone-400">
+                        Remaining at check-in
+                      </p>
+                    </div>
+
+                    {/* 3. Pay at Resort */}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setPaymentPolicyChoice('PAY_AT_PROPERTY')}
+                      className={`cursor-pointer rounded-xl border p-3 text-left transition select-none ${
+                        paymentPolicyChoice === 'PAY_AT_PROPERTY'
+                          ? 'border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-500/20 dark:border-emerald-500 dark:bg-emerald-950/40'
+                          : 'border-stone-200 bg-white hover:bg-stone-50 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-neutral-750'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase text-stone-500 dark:text-stone-400">Pay at Resort</span>
+                        {paymentPolicyChoice === 'PAY_AT_PROPERTY' && (
+                          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">✓</span>
+                        )}
+                      </div>
+                      <div className="mt-1 text-sm font-black text-stone-900 dark:text-white">
+                        ₹0 Now
+                      </div>
+                      <p className="mt-0.5 text-[10px] text-stone-500 dark:text-stone-400">
+                        Pay full on arrival
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="rounded-xl border border-stone-100 bg-stone-50 p-3 text-[11px] text-stone-500 dark:border-neutral-800 dark:bg-neutral-850">
                   🛡️ <strong>Zero Risk Booking:</strong> Free cancellation up to 48 hours prior to check-in. Your room is immediately guaranteed.
                 </div>
@@ -1149,7 +1290,11 @@ export default function BookingInterfaceClient({
                   >
                     {isBookingPending
                       ? 'Confirming & Locking Unit...'
-                      : `🔒 Confirm & Guarantee Stay · ₹${selectedRoom.grandTotal.toLocaleString()}`}
+                      : paymentPolicyChoice === 'FULL_PAYMENT'
+                      ? `🔒 Pay Full · ₹${selectedRoom.grandTotal.toLocaleString()}`
+                      : paymentPolicyChoice === 'ADVANCE'
+                      ? `🔒 Pay 50% Advance · ₹${Math.round(selectedRoom.grandTotal * 0.5).toLocaleString()}`
+                      : `🔒 Confirm (Pay ₹${selectedRoom.grandTotal.toLocaleString()} on Arrival)`}
                   </button>
                 </div>
               </form>

@@ -418,7 +418,7 @@ export default function BookingsListClient({
             <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {filteredBookings.length > 0 ? (
                 filteredBookings.map((b) => {
-                  const room = roomMap.get(b.room_id);
+                  const room = b.room_id ? roomMap.get(b.room_id) : undefined;
                   const isPendingStatus = b.booking_status === 'pending';
                   const isConfirmed = b.booking_status === 'confirmed';
                   const isCheckedIn = b.booking_status === 'checked_in';
@@ -811,7 +811,7 @@ export default function BookingsListClient({
                     </span>
                   </div>
                   <p className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-300">
-                    ✓ Collision guard checks {roomMap.get(reschedulingBooking.room_id)?.name || 'unit'} availability in real time before confirming.
+                    ✓ Collision guard checks {(reschedulingBooking.room_id ? roomMap.get(reschedulingBooking.room_id)?.name : undefined) || 'unit'} availability in real time before confirming.
                   </p>
                 </div>
               )}
@@ -863,7 +863,7 @@ export default function BookingsListClient({
               <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-3 text-xs text-rose-800 dark:border-rose-900/30 dark:bg-rose-950/20 dark:text-rose-300">
                 <p className="font-semibold">⚠️ Inventory Release Notice:</p>
                 <p className="mt-0.5 text-[11px]">
-                  Cancelling will immediately release {roomMap.get(cancellingBooking.room_id)?.name || 'the unit'} back to available inventory on the Room Rack and open availability for online bookings.
+                  Cancelling will immediately release {(cancellingBooking.room_id ? roomMap.get(cancellingBooking.room_id)?.name : undefined) || 'the unit'} back to available inventory on the Room Rack and open availability for online bookings.
                 </p>
               </div>
 
