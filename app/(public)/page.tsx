@@ -31,9 +31,9 @@ export default function PlatformHomePage() {
             <a href="#architecture" className="transition hover:text-white">
               White-Label Engine
             </a>
-            <a href="#demo" className="transition hover:text-white">
-              Live Demo
-            </a>
+            <Link href="/onboarding" className="transition hover:text-white">
+              Launch Property
+            </Link>
             <a href="#inquire" className="transition hover:text-white">
               Request Demo
             </a>
@@ -83,19 +83,18 @@ export default function PlatformHomePage() {
 
           <div className="flex flex-col items-center justify-center gap-4 pt-4 sm:flex-row">
             <Link
-              href="/raigad-tropical"
-              target="_blank"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-7 py-3.5 text-xs font-black text-neutral-950 shadow-xl transition hover:bg-neutral-200 active:scale-95 sm:w-auto"
+              href="/onboarding"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-7 py-3.5 text-xs font-black text-neutral-950 shadow-xl shadow-emerald-500/20 transition hover:bg-emerald-400 active:scale-95 sm:w-auto"
             >
-              <span>✨ Explore Live Demo: Raigad Tropical</span>
-              <span className="text-neutral-500">↗</span>
+              <span>🚀 Launch Your Property (Zero Code)</span>
+              <span>➔</span>
             </Link>
 
             <Link
               href="/login"
               className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-neutral-700 bg-neutral-900/80 px-7 py-3.5 text-xs font-bold text-neutral-200 backdrop-blur-sm transition hover:border-neutral-600 hover:text-white sm:w-auto"
             >
-              <span>Register Your Resort</span>
+              <span>Resort Owner Sign In</span>
               <span>➔</span>
             </Link>
           </div>
@@ -127,7 +126,7 @@ export default function PlatformHomePage() {
                   World 1: Guest Facing
                 </span>
                 <span className="font-mono text-[11px] text-neutral-500">
-                  raigadtropical.com or .propsynchub.com
+                  yourresort.com or yourresort.propsynchub.com
                 </span>
               </div>
 
@@ -159,12 +158,11 @@ export default function PlatformHomePage() {
 
               <div className="mt-8 pt-4">
                 <Link
-                  href="/raigad-tropical"
-                  target="_blank"
+                  href="/onboarding"
                   className="inline-flex items-center gap-2 text-xs font-bold text-emerald-400 hover:text-emerald-300"
                 >
-                  <span>Preview Raigad Tropical Showcase</span>
-                  <span>↗</span>
+                  <span>Build Your Resort Showcase</span>
+                  <span>➔</span>
                 </Link>
               </div>
             </div>
@@ -332,11 +330,11 @@ export default function PlatformHomePage() {
             </div>
 
             <div className="flex items-center gap-4 text-neutral-500">
-              <Link href="/raigad-tropical" target="_blank" className="hover:text-white">
-                Live Demo Resort ↗
+              <Link href="/onboarding" className="hover:text-white">
+                Launch Property
               </Link>
               <Link href="/login" className="hover:text-white">
-                Owner Login
+                Resort Owner Sign In
               </Link>
             </div>
           </div>

@@ -166,11 +166,20 @@ export default function AdminSidebarNav({
           </div>
 
           {/* Footer Actions */}
-          <div className="border-t border-white/10 p-4 space-y-3">
+          <div className="border-t border-white/10 p-4 space-y-2.5">
+            {userRole !== 'staff' && (
+              <Link
+                href="/onboarding"
+                className="flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs font-bold text-emerald-400 transition hover:bg-emerald-500/20 hover:text-emerald-300"
+              >
+                <span>➕ Launch New Resort</span>
+              </Link>
+            )}
+
             <Link
               href={`/${resortSubdomain}`}
               target="_blank"
-              className="flex min-h-[40px] w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 text-xs font-semibold text-neutral-200 transition hover:bg-white/10 hover:text-white"
+              className="flex min-h-[38px] w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 text-xs font-semibold text-neutral-200 transition hover:bg-white/10 hover:text-white"
             >
               <span>🌐 View Live Website</span>
               <span className="text-[10px] text-neutral-400">↗</span>
@@ -242,7 +251,16 @@ export default function AdminSidebarNav({
               </nav>
             </div>
 
-            <div className="border-t border-white/10 pt-4">
+            <div className="border-t border-white/10 pt-4 space-y-2">
+              {userRole !== 'staff' && (
+                <Link
+                  href="/onboarding"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs font-bold text-emerald-400"
+                >
+                  <span>➕ Launch New Resort</span>
+                </Link>
+              )}
               <SignOutButton />
             </div>
           </div>

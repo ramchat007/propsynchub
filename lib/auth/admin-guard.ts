@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
 import { createServerSupabaseClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase';
 import { Tenant, UserRole } from '@/types';
@@ -57,8 +58,28 @@ export async function getAuthenticatedAdminContext(): Promise<AuthenticatedAdmin
     AUTHORIZED_ADMIN_EMAILS.includes(email) || email.includes('admin');
 
   if (isOwnerAdmin) {
-    const targetTenantId =
-      process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID || PRIMARY_DEMO_TENANT_ID;
+    const cookieStore = await cookies();
+    const activeTenantCookie = cookieStore.get('active_tenant_id')?.value;
+    let targetTenantId =
+      activeTenantCookie || process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID || PRIMARY_DEMO_TENANT_ID;
+
+    // Verify tenant exists and is active
+    let { data: tenantData } = await adminDb
+      .from('tenants')
+      .select('*')
+      .eq('id', targetTenantId)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (!tenantData) {
+      targetTenantId = PRIMARY_DEMO_TENANT_ID;
+      const { data: fallbackTenant } = await adminDb
+        .from('tenants')
+        .select('*')
+        .eq('id', targetTenantId)
+        .maybeSingle();
+      tenantData = fallbackTenant;
+    }
 
     // Ensure database profile is synchronized as tenant_admin
     try {
@@ -91,13 +112,6 @@ export async function getAuthenticatedAdminContext(): Promise<AuthenticatedAdmin
     } catch (profErr) {
       console.warn('[AdminGuard] Error synchronizing owner profile:', profErr);
     }
-
-    // Fetch tenant
-    const { data: tenantData } = await adminDb
-      .from('tenants')
-      .select('*')
-      .eq('id', targetTenantId)
-      .maybeSingle();
 
     const tenant = (tenantData as unknown as Tenant) || null;
 

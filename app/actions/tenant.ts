@@ -1,9 +1,11 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { cookies } from 'next/headers';
 import { createServerSupabaseClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase';
 import { Tenant } from '@/types';
+import { notifications } from '@/lib/notifications';
 
 export interface SubdomainCheckResponse {
   success: boolean;
@@ -256,6 +258,9 @@ export async function completeOwnerOnboarding(
 
     const adminDb = createAdminClient();
 
+    const clientAdminEmail = formData.get('clientAdminEmail')?.toString()?.trim()?.toLowerCase() || null;
+    const contactEmail = clientAdminEmail || user.email?.toLowerCase() || null;
+
     // 3. Insert new tenant record
     const { data: newTenant, error: insertTenantError } = await adminDb
       .from('tenants')
@@ -263,11 +268,13 @@ export async function completeOwnerOnboarding(
         name: resortName,
         subdomain: cleanSubdomain,
         logo_url: logoUrl,
+        contact_email: contactEmail,
         is_active: true,
         settings: {
           primary_color_hex: primaryColorHex,
           onboarded_at: new Date().toISOString(),
           onboarded_by: user.id,
+          admin_emails: contactEmail ? [contactEmail] : [],
         },
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -281,31 +288,77 @@ export async function completeOwnerOnboarding(
 
     const createdTenant = newTenant as unknown as Tenant;
 
-    // 4. Update current user's profile to assign tenant_id and upgrade role to 'tenant_admin'
-    const { data: existingProfile } = await adminDb
-      .from('profiles')
-      .select('id')
-      .eq('id', user.id)
-      .maybeSingle();
+    // 4. If creating for a separate client admin, provision their account as tenant_admin
+    if (clientAdminEmail && clientAdminEmail !== user.email?.toLowerCase()) {
+      try {
+        const { data: existingUsers } = await adminDb.auth.admin.listUsers();
+        const targetUser = existingUsers?.users?.find(
+          (u) => u.email?.toLowerCase() === clientAdminEmail
+        );
 
-    if (existingProfile) {
-      const { error: profileUpdateError } = await adminDb
-        .from('profiles')
-        .update({
-          tenant_id: createdTenant.id,
-          role: 'tenant_admin',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', user.id);
+        let targetUserId: string;
 
-      if (profileUpdateError) {
-        console.warn('[Profile Upgrade Warning]:', profileUpdateError.message);
+        if (!targetUser) {
+          const syntheticPassword = `PSH_${Buffer.from(clientAdminEmail).toString('hex').slice(0, 8)}!2026`;
+          const { data: createdUser } = await adminDb.auth.admin.createUser({
+            email: clientAdminEmail,
+            password: syntheticPassword,
+            email_confirm: true,
+            user_metadata: {
+              full_name: resortName + ' Admin',
+              tenant_id: createdTenant.id,
+            },
+          });
+          targetUserId = createdUser?.user?.id || '';
+        } else {
+          targetUserId = targetUser.id;
+        }
+
+        if (targetUserId) {
+          await adminDb.from('profiles').upsert(
+            {
+              id: targetUserId,
+              tenant_id: createdTenant.id,
+              role: 'tenant_admin',
+              full_name: resortName + ' Admin',
+              mobile_number: '+919999999999',
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'id' }
+          );
+
+          const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://propsynchub.netlify.app';
+          await notifications.sendTeamInviteEmail({
+            to: clientAdminEmail,
+            inviteeName: resortName + ' Admin',
+            resortName,
+            role: 'tenant_admin',
+            inviterName: user.email || 'PropSyncHub Platform',
+            loginUrl: `${appUrl}/login`,
+          });
+        }
+      } catch (clientErr) {
+        console.warn('[Onboarding] Error provisioning client admin account:', clientErr);
       }
     } else {
-      // Upsert profile if trigger did not auto-create it
-      const { error: profileInsertError } = await adminDb
+      // 4b. Update current user's profile to assign tenant_id and upgrade role to 'tenant_admin'
+      const { data: existingProfile } = await adminDb
         .from('profiles')
-        .insert({
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (existingProfile) {
+        await adminDb
+          .from('profiles')
+          .update({
+            tenant_id: createdTenant.id,
+            role: 'tenant_admin',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', user.id);
+      } else {
+        await adminDb.from('profiles').insert({
           id: user.id,
           tenant_id: createdTenant.id,
           mobile_number: user.phone || '+919999999999',
@@ -314,13 +367,18 @@ export async function completeOwnerOnboarding(
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         });
-
-      if (profileInsertError) {
-        console.warn('[Profile Insert Warning]:', profileInsertError.message);
       }
     }
 
-    // 5. Revalidate cache
+    // 5. Set active tenant cookie so the creator immediately views this newly launched resort
+    const cookieStore = await cookies();
+    cookieStore.set('active_tenant_id', createdTenant.id, {
+      path: '/',
+      httpOnly: true,
+      maxAge: 60 * 60 * 24 * 30, // 30 days
+    });
+
+    // 6. Revalidate cache
     revalidatePath('/dashboard');
     revalidatePath('/settings');
     revalidatePath('/bookings');

@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase-server';
 import OnboardingWizardClient from '@/components/public/OnboardingWizardClient';
+import { AUTHORIZED_ADMIN_EMAILS } from '@/lib/auth/admin-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,15 +18,22 @@ export default async function OnboardingPage() {
   }
 
   // 2. Tenant isolation check:
-  // Only users who do NOT yet have an assigned tenant_id should be able to access it
+  // Brand new users without a tenant can onboard.
+  // Authorized administrators & superadmins can also onboard additional properties.
   const { data: profile } = await supabase
     .from('profiles')
     .select('tenant_id, role, mobile_number')
     .eq('id', user.id)
     .maybeSingle();
 
-  if (profile?.tenant_id) {
-    // Already assigned to a resort organization -> Send directly to admin dashboard
+  const email = (user.email || '').toLowerCase().trim();
+  const isSuperadminOrAdmin =
+    AUTHORIZED_ADMIN_EMAILS.includes(email) ||
+    profile?.role === 'tenant_admin' ||
+    profile?.role === 'superadmin';
+
+  if (profile?.tenant_id && !isSuperadminOrAdmin) {
+    // Standard staff or members already assigned -> Send directly to admin dashboard
     redirect('/dashboard');
   }
 

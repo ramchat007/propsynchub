@@ -48,6 +48,7 @@ export default function OnboardingWizardClient({
 
   // Step 3: Assets & Review Form
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [clientAdminEmail, setClientAdminEmail] = useState('');
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [logoUploadError, setLogoUploadError] = useState<string | null>(null);
 
@@ -167,6 +168,7 @@ export default function OnboardingWizardClient({
       formData.set('subdomain', subdomain.trim());
       formData.set('primaryColorHex', primaryColorHex);
       if (logoUrl) formData.set('logoUrl', logoUrl);
+      if (clientAdminEmail) formData.set('clientAdminEmail', clientAdminEmail.trim());
 
       const res = await completeOwnerOnboarding(formData);
       if (res.success) {
@@ -561,6 +563,23 @@ export default function OnboardingWizardClient({
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Optional Client / Resort Administrator Assignment */}
+            <div className="space-y-2 rounded-2xl border border-neutral-200 bg-neutral-50/60 p-4 dark:border-neutral-800 dark:bg-neutral-800/20">
+              <label className="block text-xs font-bold text-neutral-800 dark:text-neutral-200">
+                Client / Resort Owner Email (Optional)
+              </label>
+              <p className="text-[11px] text-neutral-500 leading-tight">
+                Creating this resort on behalf of a client? Enter their email below. They will be provisioned as the Resort Administrator and receive an invitation to access the dashboard.
+              </p>
+              <input
+                type="email"
+                placeholder="e.g. owner@newresort.com (Leave blank to assign to yourself)"
+                value={clientAdminEmail}
+                onChange={(e) => setClientAdminEmail(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-neutral-300 bg-white px-3.5 py-2.5 text-xs text-neutral-900 placeholder:text-neutral-400 focus:border-emerald-500 focus:outline-hidden dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+              />
             </div>
 
             {/* Final Confirmation Summary */}
