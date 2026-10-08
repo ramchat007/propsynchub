@@ -30,8 +30,23 @@ function resolveTenant(host: string): {
   // Strip port from host header (e.g., localhost:3000 -> localhost)
   const hostname = (host || '').split(':')[0].toLowerCase();
 
-  // 1. Apex / Main platform check
-  if (ROOT_DOMAINS.includes(hostname) || hostname === 'www.localhost') {
+  // 1. Apex / Main platform check (Localhost, PropSyncHub root, Netlify deploy URLs, Vercel URLs)
+  let appUrlHost = '';
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    try {
+      appUrlHost = new URL(process.env.NEXT_PUBLIC_APP_URL).hostname.toLowerCase();
+    } catch {
+      // ignore
+    }
+  }
+
+  if (
+    ROOT_DOMAINS.includes(hostname) ||
+    hostname === 'www.localhost' ||
+    hostname.includes('netlify.app') ||
+    hostname.includes('vercel.app') ||
+    (appUrlHost && hostname === appUrlHost)
+  ) {
     return { tenantId: null, isCustomDomain: false, isApex: true };
   }
 
@@ -69,6 +84,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/admin') ||
     pathname.startsWith('/dashboard') ||
     pathname.startsWith('/bookings') ||
+    pathname.startsWith('/calendar') ||
     pathname.startsWith('/inventory') ||
     pathname.startsWith('/reports') ||
     pathname.startsWith('/audit-logs') ||
@@ -93,8 +109,8 @@ export async function middleware(request: NextRequest) {
   // ---------------------------------------------------------------------------
   // Initialize Supabase SSR client to inspect session cookies
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key',
+    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://qqxctovvqrwllyanwglh.supabase.co',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxeGN0b3Z2cXJ3bGx5YW53Z2xoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTExOTc2NTIsImV4cCI6MjEwNjc3MzY1Mn0.rM0IxipDbqhbaYjRoJ95Z6tAfJEbz2YsMnfN9s1-oRY',
     {
       cookies: {
         getAll() {
