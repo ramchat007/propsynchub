@@ -170,14 +170,6 @@ function LoginForm() {
     }
   }
 
-  /**
-   * Quick Test Account Fill
-   */
-  function handleFillTestAdmin() {
-    setEmail('admin@raigadtropical.com');
-    setOtpDigits(['1', '2', '3', '4', '5', '6']);
-  }
-
   // Handle individual OTP input changes
   function handleOtpChange(index: number, value: string) {
     if (value.length > 1) {
@@ -329,17 +321,6 @@ function LoginForm() {
               >
                 {isLoading ? loadingText || 'Sending...' : 'Send Verification Code →'}
               </button>
-
-              {/* Quick Dev Preset */}
-              <div className="mt-4 pt-4 border-t border-dashed border-neutral-200 dark:border-neutral-800 text-center">
-                <button
-                  type="button"
-                  onClick={handleFillTestAdmin}
-                  className="text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 underline dark:text-emerald-400"
-                >
-                  ⚡ Auto-fill Test Resort Admin (admin@raigadtropical.com)
-                </button>
-              </div>
             </form>
           )}
 

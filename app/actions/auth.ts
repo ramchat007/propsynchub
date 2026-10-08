@@ -158,6 +158,13 @@ export async function verifyEmailOtpAction(
 
     // 3. Ensure profile exists and check tenant link
     const targetTenantId = tenantId || process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID || '2f002373-c7f2-4127-842f-4bb20d7a1b64';
+    const ADMIN_EMAILS = [
+      'ramchat007@gmail.com',
+      'admin@raigadtropical.com',
+      'contact@raigadtropical.com',
+    ];
+    const isAdminUser = ADMIN_EMAILS.includes(email) || email.includes('admin');
+
     const { data: profile } = await adminDb
       .from('profiles')
       .select('tenant_id, role')
@@ -173,9 +180,18 @@ export async function verifyEmailOtpAction(
         tenant_id: targetTenantId,
         mobile_number: '+919820160376',
         full_name: email.split('@')[0],
-        role: email.includes('admin') ? 'tenant_admin' : 'guest',
+        role: isAdminUser ? 'tenant_admin' : 'guest',
       });
       hasTenant = true;
+    } else if (isAdminUser && profile.role !== 'tenant_admin') {
+      // Upgrade verified owner/admin account to tenant_admin
+      await adminDb
+        .from('profiles')
+        .update({
+          role: 'tenant_admin',
+          tenant_id: targetTenantId,
+        })
+        .eq('id', existingUser.id);
     }
 
     // 4. Establish SSR session cookies directly on the server
@@ -189,9 +205,10 @@ export async function verifyEmailOtpAction(
       console.warn('[Server Auth] Session cookie write warning:', serverSignErr);
     }
 
-    const defaultRedirect = profile?.role === 'tenant_admin' || email.includes('admin')
+    // Guests are redirected to the resort website, only staff/admins go to the operations dashboard
+    const defaultRedirect = isAdminUser || profile?.role === 'tenant_admin' || profile?.role === 'staff'
       ? '/dashboard'
-      : '/dashboard';
+      : '/raigad-tropical';
 
     return {
       success: true,

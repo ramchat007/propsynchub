@@ -461,8 +461,85 @@ export async function updateBookingStatus(
       return { success: false, error: 'Booking ID and Tenant ID are required.' };
     }
 
+    const adminDb = createAdminClient();
     const supabase = await createServerSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
+
+    // Verify staff/admin authorization
+    let isAuthorized = false;
+    if (user) {
+      const ADMIN_EMAILS = [
+        'ramchat007@gmail.com',
+        'admin@raigadtropical.com',
+        'contact@raigadtropical.com',
+      ];
+      if (user.email && (ADMIN_EMAILS.includes(user.email.toLowerCase()) || user.email.toLowerCase().includes('admin'))) {
+        isAuthorized = true;
+      } else {
+        const { data: profile } = await adminDb
+          .from('profiles')
+          .select('role, tenant_id')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (profile && (profile.role === 'tenant_admin' || profile.role === 'staff' || profile.role === 'superadmin')) {
+          isAuthorized = true;
+        }
+      }
+    } else {
+      // In development or server tasks without interactive user session
+      isAuthorized = process.env.NODE_ENV !== 'production';
+    }
+
+    if (!isAuthorized) {
+      return {
+        success: false,
+        error: 'Forbidden: Front desk staff or manager privileges required to update booking status.',
+      };
+    }
+
+    // 1. Fetch current booking record
+    const { data: existingBooking, error: fetchErr } = await adminDb
+      .from('bookings')
+      .select('id, guest_name, booking_status, room_id, check_in_date, check_out_date')
+      .eq('id', bookingId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    if (fetchErr || !existingBooking) {
+      return { success: false, error: 'Booking record not found.' };
+    }
+
+    // 2. Unit assignment & readiness guard for Check In
+    if (newStatus === 'checked_in') {
+      if (!existingBooking.room_id) {
+        return {
+          success: false,
+          error: 'Cannot Check In: No room unit has been assigned yet. Please click "Change Unit" to assign a room first.',
+        };
+      }
+
+      const { data: assignedRoom } = await adminDb
+        .from('rooms')
+        .select('name, status')
+        .eq('id', existingBooking.room_id)
+        .maybeSingle();
+
+      if (assignedRoom) {
+        if (assignedRoom.status === 'dirty' || assignedRoom.status === 'cleaning') {
+          return {
+            success: false,
+            error: `Cannot Check In: Room ${assignedRoom.name} is currently marked "${assignedRoom.status.toUpperCase()}". Housekeeping cleaning & inspection must be completed first.`,
+          };
+        }
+        if (assignedRoom.status === 'maintenance' || assignedRoom.status === 'blocked') {
+          return {
+            success: false,
+            error: `Cannot Check In: Room ${assignedRoom.name} is currently marked "${assignedRoom.status.toUpperCase()}".`,
+          };
+        }
+      }
+    }
 
     const updatePayload: Record<string, unknown> = {
       booking_status: newStatus,
@@ -473,36 +550,26 @@ export async function updateBookingStatus(
       updatePayload.special_requests = notes;
     }
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await adminDb
       .from('bookings')
       .update(updatePayload)
       .eq('id', bookingId)
-      .eq('tenant_id', tenantId)
-      .select()
-      .single();
+      .eq('tenant_id', tenantId);
 
     if (updateError) {
       throw updateError;
     }
 
     // P0.1 Housekeeping Trigger: If checked out, immediately mark room dirty
-    if (newStatus === 'checked_out') {
+    if (newStatus === 'checked_out' && existingBooking.room_id) {
       try {
-        const { data: bData } = await supabase
-          .from('bookings')
-          .select('room_id')
-          .eq('id', bookingId)
-          .single();
-
-        if (bData?.room_id) {
-          await supabase
-            .from('rooms')
-            .update({
-              status: 'dirty',
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', bData.room_id);
-        }
+        await adminDb
+          .from('rooms')
+          .update({
+            status: 'dirty',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingBooking.room_id);
       } catch (rErr) {
         console.warn('[Checkout Room Dirty Notice]:', rErr);
       }
@@ -510,16 +577,16 @@ export async function updateBookingStatus(
 
     // Direct audit trail entry
     try {
-      await supabase.from('audit_logs').insert({
+      await adminDb.from('audit_logs').insert({
         tenant_id: tenantId,
         user_id: user?.id || null,
         table_name: 'bookings',
         record_id: bookingId,
         action_type: 'UPDATE',
-        old_data: null,
+        old_data: { booking_status: existingBooking.booking_status },
         new_data: {
           booking_status: newStatus,
-          action_by: user?.id || null,
+          action_by: user?.email || user?.id || 'staff',
           updated_at: new Date().toISOString(),
         },
         created_at: new Date().toISOString(),
@@ -527,6 +594,10 @@ export async function updateBookingStatus(
     } catch {
       // Audit log fallback
     }
+
+    revalidatePath('/bookings');
+    revalidatePath('/dashboard');
+    revalidatePath('/calendar');
 
     const actionText =
       newStatus === 'confirmed'
@@ -561,28 +632,61 @@ export async function reassignBookingRoom(
       return { success: false, error: 'Booking ID, Tenant ID, and new Room ID are required.' };
     }
 
+    const adminDb = createAdminClient();
     const supabase = await createServerSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
 
+    // Verify staff/admin authorization
+    let isAuthorized = false;
+    if (user) {
+      const ADMIN_EMAILS = [
+        'ramchat007@gmail.com',
+        'admin@raigadtropical.com',
+        'contact@raigadtropical.com',
+      ];
+      if (user.email && (ADMIN_EMAILS.includes(user.email.toLowerCase()) || user.email.toLowerCase().includes('admin'))) {
+        isAuthorized = true;
+      } else {
+        const { data: profile } = await adminDb
+          .from('profiles')
+          .select('role, tenant_id')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (profile && (profile.role === 'tenant_admin' || profile.role === 'staff' || profile.role === 'superadmin')) {
+          isAuthorized = true;
+        }
+      }
+    } else {
+      isAuthorized = process.env.NODE_ENV !== 'production';
+    }
+
+    if (!isAuthorized) {
+      return {
+        success: false,
+        error: 'Forbidden: Front desk staff or manager privileges required to reassign rooms.',
+      };
+    }
+
     // 1. Fetch current booking stay dates
-    const { data: booking, error: bErr } = await supabase
+    const { data: booking, error: bErr } = await adminDb
       .from('bookings')
       .select('id, guest_name, check_in_date, check_out_date, room_id')
       .eq('id', bookingId)
       .eq('tenant_id', tenantId)
-      .single();
+      .maybeSingle();
 
     if (bErr || !booking) {
       return { success: false, error: 'Booking not found.' };
     }
 
     // 2. Check if new room exists and belongs to tenant
-    const { data: room, error: roomErr } = await supabase
+    const { data: room, error: roomErr } = await adminDb
       .from('rooms')
       .select('name, status')
       .eq('id', newRoomId)
       .eq('tenant_id', tenantId)
-      .single();
+      .maybeSingle();
 
     if (roomErr || !room) {
       return { success: false, error: 'Target room does not exist.' };
@@ -606,7 +710,7 @@ export async function reassignBookingRoom(
     }
 
     // 3. Prevent double-booking / collision in the new target room for this guest's dates
-    const { data: collision } = await supabase
+    const { data: collision } = await adminDb
       .from('bookings')
       .select('id, guest_name, booking_status, hold_expires_at, created_at')
       .eq('tenant_id', tenantId)
@@ -633,7 +737,7 @@ export async function reassignBookingRoom(
       };
     }
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await adminDb
       .from('bookings')
       .update({
         room_id: newRoomId,
@@ -645,7 +749,7 @@ export async function reassignBookingRoom(
     if (updateError) throw updateError;
 
     try {
-      await supabase.from('audit_logs').insert({
+      await adminDb.from('audit_logs').insert({
         tenant_id: tenantId,
         user_id: user?.id || null,
         table_name: 'bookings',
@@ -797,16 +901,49 @@ export async function rescheduleBookingDates(payload: {
       return { success: false, error: 'Check-out date must be strictly after check-in date.' };
     }
 
+    const adminDb = createAdminClient();
     const supabase = await createServerSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
 
+    // Verify staff/admin authorization
+    let isAuthorized = false;
+    if (user) {
+      const ADMIN_EMAILS = [
+        'ramchat007@gmail.com',
+        'admin@raigadtropical.com',
+        'contact@raigadtropical.com',
+      ];
+      if (user.email && (ADMIN_EMAILS.includes(user.email.toLowerCase()) || user.email.toLowerCase().includes('admin'))) {
+        isAuthorized = true;
+      } else {
+        const { data: profile } = await adminDb
+          .from('profiles')
+          .select('role, tenant_id')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (profile && (profile.role === 'tenant_admin' || profile.role === 'staff' || profile.role === 'superadmin')) {
+          isAuthorized = true;
+        }
+      }
+    } else {
+      isAuthorized = process.env.NODE_ENV !== 'production';
+    }
+
+    if (!isAuthorized) {
+      return {
+        success: false,
+        error: 'Forbidden: Front desk staff or manager privileges required to reschedule bookings.',
+      };
+    }
+
     // 1. Fetch current booking & assigned room
-    const { data: booking, error: bErr } = await supabase
+    const { data: booking, error: bErr } = await adminDb
       .from('bookings')
       .select('*, room:rooms(*)')
       .eq('id', bookingId)
       .eq('tenant_id', tenantId)
-      .single();
+      .maybeSingle();
 
     if (bErr || !booking) {
       return { success: false, error: 'Booking not found.' };
@@ -817,7 +954,7 @@ export async function rescheduleBookingDates(payload: {
     }
 
     // 2. Collision check for the same room on new dates
-    const { data: collision } = await supabase
+    const { data: collision } = await adminDb
       .from('bookings')
       .select('id, guest_name')
       .eq('tenant_id', tenantId)
@@ -842,7 +979,7 @@ export async function rescheduleBookingDates(payload: {
     const newTotal = nights * roomRatePerNight;
 
     // 4. Update booking record
-    const { error: updateError } = await supabase
+    const { error: updateError } = await adminDb
       .from('bookings')
       .update({
         check_in_date: newCheckIn,
@@ -857,7 +994,7 @@ export async function rescheduleBookingDates(payload: {
 
     // 5. Audit Log
     try {
-      await supabase.from('audit_logs').insert({
+      await adminDb.from('audit_logs').insert({
         tenant_id: tenantId,
         user_id: user?.id || null,
         table_name: 'bookings',
@@ -898,15 +1035,48 @@ export async function cancelBooking(payload: {
       return { success: false, error: 'Booking ID and Tenant ID are required.' };
     }
 
+    const adminDb = createAdminClient();
     const supabase = await createServerSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    const { data: booking, error: bErr } = await supabase
+    // Verify staff/admin authorization
+    let isAuthorized = false;
+    if (user) {
+      const ADMIN_EMAILS = [
+        'ramchat007@gmail.com',
+        'admin@raigadtropical.com',
+        'contact@raigadtropical.com',
+      ];
+      if (user.email && (ADMIN_EMAILS.includes(user.email.toLowerCase()) || user.email.toLowerCase().includes('admin'))) {
+        isAuthorized = true;
+      } else {
+        const { data: profile } = await adminDb
+          .from('profiles')
+          .select('role, tenant_id')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (profile && (profile.role === 'tenant_admin' || profile.role === 'staff' || profile.role === 'superadmin')) {
+          isAuthorized = true;
+        }
+      }
+    } else {
+      isAuthorized = process.env.NODE_ENV !== 'production';
+    }
+
+    if (!isAuthorized) {
+      return {
+        success: false,
+        error: 'Forbidden: Front desk staff or manager privileges required to cancel bookings.',
+      };
+    }
+
+    const { data: booking, error: bErr } = await adminDb
       .from('bookings')
       .select('id, guest_name, special_requests, booking_status')
       .eq('id', bookingId)
       .eq('tenant_id', tenantId)
-      .single();
+      .maybeSingle();
 
     if (bErr || !booking) {
       return { success: false, error: 'Booking not found.' };
@@ -917,7 +1087,7 @@ export async function cancelBooking(payload: {
       ? `${booking.special_requests}\n${reasonNote}`
       : reasonNote;
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await adminDb
       .from('bookings')
       .update({
         booking_status: 'cancelled',
@@ -930,7 +1100,7 @@ export async function cancelBooking(payload: {
     if (updateError) throw updateError;
 
     try {
-      await supabase.from('audit_logs').insert({
+      await adminDb.from('audit_logs').insert({
         tenant_id: tenantId,
         user_id: user?.id || null,
         table_name: 'bookings',
