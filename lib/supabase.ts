@@ -7,7 +7,6 @@ import { createBrowserClient } from '@supabase/ssr';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-project.supabase.co';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 export type SupabaseCustomClientOptions = NonNullable<
   Parameters<typeof createClient>[2]
@@ -119,7 +118,9 @@ export function createAdminClient(schema = 'public') {
     throw new Error('createAdminClient must strictly be called in server environments only.');
   }
 
-  if (!supabaseServiceRoleKey) {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!serviceRoleKey) {
     console.warn(
       'SUPABASE_SERVICE_ROLE_KEY is not defined in environment variables. Falling back to anon key.'
     );
@@ -127,7 +128,7 @@ export function createAdminClient(schema = 'public') {
 
   return createClient(
     supabaseUrl,
-    supabaseServiceRoleKey || supabaseAnonKey,
+    serviceRoleKey || supabaseAnonKey,
     {
       auth: {
         autoRefreshToken: false,

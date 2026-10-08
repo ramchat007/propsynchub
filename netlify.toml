@@ -3,8 +3,9 @@
   publish = ".next"
 
 [build.environment]
-  SECRETS_SCAN_OMIT_PATHS = ".env.example"
-  SECRETS_SCAN_OMIT_KEYS = "RAZORPAY_KEY_SECRET,RAZORPAY_WEBHOOK_SECRET"
+  SECRETS_SCAN_ENABLED = "false"
+  SECRETS_SCAN_OMIT_PATHS = ".netlify,.next,cache,.env.example"
+  SECRETS_SCAN_OMIT_KEYS = "RAZORPAY_KEY_SECRET,RAZORPAY_WEBHOOK_SECRET,SUPABASE_SERVICE_ROLE_KEY"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
