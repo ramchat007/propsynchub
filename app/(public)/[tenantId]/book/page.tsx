@@ -1,6 +1,7 @@
 import React, { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase';
 import BookingInterfaceClient from '@/components/public/BookingInterfaceClient';
 import { Tenant } from '@/types';
 
@@ -16,12 +17,13 @@ export default async function TenantBookingPage({ params }: BookingPageProps) {
   const { tenantId } = await params;
   const decodedTenantParam = decodeURIComponent(tenantId);
 
+  const adminDb = createAdminClient();
   const supabase = await createServerSupabaseClient();
 
   // 1. Resolve Tenant from Supabase (by id, subdomain, or custom_domain)
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(decodedTenantParam);
 
-  let tenantQuery = supabase.from('tenants').select('*');
+  let tenantQuery = adminDb.from('tenants').select('*');
   if (isUuid) {
     tenantQuery = tenantQuery.eq('id', decodedTenantParam);
   } else {
@@ -34,7 +36,7 @@ export default async function TenantBookingPage({ params }: BookingPageProps) {
 
   // Fallback: If not found by custom domain/subdomain, check first active tenant or fallback demo
   if (!tenant) {
-    const { data: fallbackTenants } = await supabase
+    const { data: fallbackTenants } = await adminDb
       .from('tenants')
       .select('*')
       .eq('is_active', true)
@@ -42,6 +44,34 @@ export default async function TenantBookingPage({ params }: BookingPageProps) {
 
     if (fallbackTenants && fallbackTenants.length > 0 && fallbackTenants[0]) {
       tenant = fallbackTenants[0];
+    }
+  }
+
+  const DEFAULT_FALLBACK_TENANT: Tenant = {
+    id: '2f002373-c7f2-4127-842f-4bb20d7a1b64',
+    name: 'Raigad Tropical',
+    subdomain: 'raigad-tropical',
+    custom_domain: null,
+    contact_email: 'contact@raigadtropical.com',
+    contact_phone: '+91 98201 60376',
+    is_active: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    settings: {
+      address: 'Alibaug-Murud Coastal Road, Raigad, Maharashtra 402401',
+      hero_title: 'Raigad Tropical Resort & Luxury Villas',
+      hero_subtitle: 'Experience coastal tranquility, coconut groves, and private pool luxury.',
+      primary_color: '#047857',
+    },
+  };
+
+  if (!tenant) {
+    if (
+      decodedTenantParam.toLowerCase() === 'raigad-tropical' ||
+      decodedTenantParam === '2f002373-c7f2-4127-842f-4bb20d7a1b64' ||
+      !decodedTenantParam
+    ) {
+      tenant = DEFAULT_FALLBACK_TENANT;
     }
   }
 

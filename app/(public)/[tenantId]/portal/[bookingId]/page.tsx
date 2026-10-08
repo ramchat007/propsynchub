@@ -42,6 +42,35 @@ export default async function GuestPortalPage({ params }: GuestPortalProps) {
     }
   }
 
+  if (!tenant) {
+    if (
+      decodedTenantParam.toLowerCase() === 'raigad-tropical' ||
+      decodedTenantParam === '2f002373-c7f2-4127-842f-4bb20d7a1b64' ||
+      !decodedTenantParam
+    ) {
+      tenant = {
+        id: '2f002373-c7f2-4127-842f-4bb20d7a1b64',
+        name: 'Raigad Tropical',
+        subdomain: 'raigad-tropical',
+        custom_domain: null,
+        contact_email: 'contact@raigadtropical.com',
+        contact_phone: '+91 98201 60376',
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        settings: {
+          hero_title: 'Raigad Tropical Resort & Luxury Villas',
+          hero_subtitle: 'Experience coastal tranquility, coconut groves, and private pool luxury.',
+          primary_color: '#047857',
+          address: 'Alibaug-Murud Coastal Road, Raigad, Maharashtra 402401',
+          currency: 'INR',
+        },
+      };
+    } else {
+      notFound();
+    }
+  }
+
   if (!tenant) notFound();
 
   // 2. Fetch Booking
