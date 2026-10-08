@@ -9,12 +9,14 @@ interface AdminSidebarNavProps {
   resortName?: string;
   resortSubdomain?: string;
   userRole?: 'superadmin' | 'tenant_admin' | 'staff' | 'guest';
+  primaryBrandColor?: string;
 }
 
 export default function AdminSidebarNav({
   resortName = 'Resort PMS',
   resortSubdomain = 'raigad-tropical',
   userRole = 'tenant_admin',
+  primaryBrandColor = '#059669',
 }: AdminSidebarNavProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -108,6 +110,15 @@ export default function AdminSidebarNav({
         </svg>
       ),
     },
+    {
+      name: 'Subscription & SaaS',
+      href: '/settings/subscription',
+      icon: (
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+        </svg>
+      ),
+    },
   ];
 
   const allowedLinks = navLinks.filter((link) => {
@@ -125,14 +136,20 @@ export default function AdminSidebarNav({
           <div>
             {/* Resort Branding Header */}
             <div className="flex h-20 items-center gap-3 border-b border-white/10 px-6">
-              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-xl font-black text-white shadow-md">
-                P
+              <span
+                className="flex h-11 w-11 items-center justify-center rounded-2xl text-xl font-black text-white shadow-md transition-all"
+                style={{ backgroundColor: primaryBrandColor }}
+              >
+                {resortName.charAt(0).toUpperCase()}
               </span>
               <div className="min-w-0">
                 <p className="truncate font-serif text-base font-bold text-white">
                   {resortName}
                 </p>
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-400">
+                <p
+                  className="text-[10px] font-bold uppercase tracking-[0.18em]"
+                  style={{ color: primaryBrandColor }}
+                >
                   {userRole === 'staff' ? 'Front Desk Suite' : 'Resort Admin Suite'}
                 </p>
               </div>
@@ -151,9 +168,14 @@ export default function AdminSidebarNav({
                   <Link
                     key={item.name}
                     href={item.href}
+                    style={
+                      isActive
+                        ? { backgroundColor: primaryBrandColor, color: '#ffffff' }
+                        : undefined
+                    }
                     className={`flex min-h-[44px] items-center gap-3 rounded-xl px-4 text-xs font-bold transition ${
                       isActive
-                        ? 'bg-emerald-500 text-neutral-950 shadow-md shadow-emerald-950/20'
+                        ? 'shadow-md'
                         : 'text-neutral-300 hover:bg-white/10 hover:text-white'
                     }`}
                   >
@@ -170,7 +192,12 @@ export default function AdminSidebarNav({
             {userRole !== 'staff' && (
               <Link
                 href="/onboarding"
-                className="flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs font-bold text-emerald-400 transition hover:bg-emerald-500/20 hover:text-emerald-300"
+                style={{
+                  backgroundColor: `${primaryBrandColor}15`,
+                  borderColor: `${primaryBrandColor}40`,
+                  color: primaryBrandColor,
+                }}
+                className="flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-xl border text-xs font-bold transition hover:opacity-90"
               >
                 <span>➕ Launch New Resort</span>
               </Link>
@@ -214,7 +241,8 @@ export default function AdminSidebarNav({
         <Link
           href={`/${resortSubdomain}`}
           target="_blank"
-          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white"
+          style={{ backgroundColor: primaryBrandColor }}
+          className="rounded-lg px-3 py-1.5 text-xs font-bold text-white shadow-xs"
         >
           View Site ↗
         </Link>
@@ -256,7 +284,12 @@ export default function AdminSidebarNav({
                 <Link
                   href="/onboarding"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs font-bold text-emerald-400"
+                  style={{
+                    backgroundColor: `${primaryBrandColor}15`,
+                    borderColor: `${primaryBrandColor}40`,
+                    color: primaryBrandColor,
+                  }}
+                  className="flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-xl border text-xs font-bold transition hover:opacity-90"
                 >
                   <span>➕ Launch New Resort</span>
                 </Link>

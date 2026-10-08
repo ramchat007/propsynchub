@@ -52,11 +52,23 @@ export default async function AdminLayout({
   const resortName = auth.tenant.name;
   const resortSubdomain = auth.tenant.subdomain;
   const userRole = auth.role;
+  const primaryBrandColor =
+    (auth.tenant.settings?.primary_color_hex as string) ||
+    (auth.tenant.settings?.primaryColorHex as string) ||
+    '#059669';
 
   return (
-    <div className="min-h-screen bg-stone-50 font-sans text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-100">
-      {/* 1. Sleek Left Sidebar Navigation */}
-      <AdminSidebarNav resortName={resortName} resortSubdomain={resortSubdomain} userRole={userRole} />
+    <div
+      style={{ '--brand-primary': primaryBrandColor } as React.CSSProperties}
+      className="min-h-screen bg-stone-50 font-sans text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-100"
+    >
+      {/* 1. Sleek Left Sidebar Navigation with Dynamic Brand Color */}
+      <AdminSidebarNav
+        resortName={resortName}
+        resortSubdomain={resortSubdomain}
+        userRole={userRole}
+        primaryBrandColor={primaryBrandColor}
+      />
 
       {/* 2. Main Content Area */}
       <div className="lg:pl-64 flex flex-col min-h-screen">

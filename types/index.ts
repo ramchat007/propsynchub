@@ -14,6 +14,9 @@ export interface TenantSettings {
   advance_percentage?: number; // e.g. 50 for 50% advance
   check_in_time?: string;
   check_out_time?: string;
+  primary_color_hex?: string;
+  subscription?: TenantSubscription;
+  admin_emails?: string[];
   [key: string]: unknown;
 }
 
@@ -193,4 +196,38 @@ export interface TeamMember {
   created_at: string;
   updated_at: string;
 }
+
+export type SubscriptionStatus = 'trial' | 'active' | 'pending_approval' | 'expired';
+export type SubscriptionPlan = 'starter' | 'pro' | 'enterprise';
+export type PlatformPaymentMode = 'free_trial' | 'offline_bank_transfer' | 'online_razorpay' | 'complimentary';
+
+export interface TenantSubscriptionPaymentRecord {
+  id: string;
+  date: string;
+  amount: number;
+  plan: SubscriptionPlan;
+  billing_cycle?: 'monthly' | 'yearly';
+  mode: PlatformPaymentMode;
+  reference?: string;
+  status: 'approved' | 'pending' | 'rejected';
+  notes?: string;
+  approved_by?: string;
+}
+
+export interface TenantSubscription {
+  status: SubscriptionStatus;
+  plan: SubscriptionPlan;
+  billing_cycle?: 'monthly' | 'yearly';
+  trial_ends_at?: string;
+  active_until?: string;
+  payment_mode: PlatformPaymentMode;
+  amount_inr?: number;
+  offline_reference?: string;
+  offline_notes?: string;
+  submitted_at?: string;
+  approved_at?: string;
+  approved_by?: string;
+  payment_history?: TenantSubscriptionPaymentRecord[];
+}
+
 

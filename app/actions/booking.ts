@@ -1169,7 +1169,7 @@ export async function seedSampleBookings(tenantId: string): Promise<{ success: b
         tenant_id: tenantId,
         room_id: room1.id,
         guest_name: 'Amelia Hart',
-        guest_mobile_number: '+919820160376',
+        guest_mobile_number: '+919876543210',
         guest_email: 'amelia.hart@luxurytravel.com',
         check_in_date: formatDate(yesterday),
         check_out_date: formatDate(dayAfter),

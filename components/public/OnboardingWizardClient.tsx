@@ -9,7 +9,6 @@ import {
 } from '@/app/actions/tenant';
 
 interface OnboardingWizardClientProps {
-  userPhone?: string;
   userEmail?: string;
 }
 
@@ -25,7 +24,7 @@ const COLOR_PRESETS = [
 ];
 
 export default function OnboardingWizardClient({
-  userPhone,
+  userEmail,
 }: OnboardingWizardClientProps) {
   const router = useRouter();
 
@@ -619,12 +618,12 @@ export default function OnboardingWizardClient({
                   </span>
                 </div>
 
-                {userPhone && (
-                  <div className="flex justify-between">
-                    <span className="text-neutral-500">Owner Contact</span>
-                    <span className="font-mono text-neutral-800 dark:text-neutral-200">{userPhone}</span>
-                  </div>
-                )}
+                <div className="flex justify-between">
+                  <span className="text-neutral-500">Administrator</span>
+                  <span className="font-semibold text-neutral-800 dark:text-neutral-200">
+                    {clientAdminEmail || userEmail || 'Current Account'}
+                  </span>
+                </div>
 
                 <div className="flex justify-between border-t border-neutral-200 pt-2 dark:border-neutral-700">
                   <span className="text-neutral-500">Assigned Account Role</span>

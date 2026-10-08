@@ -191,7 +191,7 @@ export async function verifyEmailOtpAction(
       await adminDb.from('profiles').insert({
         id: existingUser.id,
         tenant_id: targetTenantId,
-        mobile_number: '+919820160376',
+        mobile_number: existingUser.phone || '+919999999999',
         full_name: email.split('@')[0],
         role: isAdminUser ? 'tenant_admin' : 'guest',
       });

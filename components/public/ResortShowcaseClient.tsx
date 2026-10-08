@@ -99,10 +99,10 @@ export default function ResortShowcaseClient({
 
   const address =
     settings.address || 'Survey No. 42, Tropical Greens, Raigad District, Maharashtra 402107';
-  const whatsappNumber = settings.whatsapp_number || '+919820160376';
+  const whatsappNumber = settings.whatsapp_number || tenant.contact_phone || '+919999999999';
   const cleanWhatsApp = whatsappNumber.replace(/\D/g, '');
-  const contactPhone = settings.contact_phone || tenant.contact_phone || '+91 98201 60376';
-  const contactEmail = settings.contact_email || tenant.contact_email || 'stay@raigadtropical.com';
+  const contactPhone = settings.contact_phone || tenant.contact_phone || '+91 99999 99999';
+  const contactEmail = settings.contact_email || tenant.contact_email || 'stay@resort.com';
 
   // Quick Search Bar state
   const getToday = () => new Date().toISOString().split('T')[0];

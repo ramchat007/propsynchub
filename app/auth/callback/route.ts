@@ -65,7 +65,7 @@ export async function GET(request: Request) {
             await adminDb.from('profiles').insert({
               id: data.user.id,
               tenant_id: targetTenantId,
-              mobile_number: '+919820160376',
+              mobile_number: data.user.phone || '+919999999999',
               full_name: email.split('@')[0],
               role: 'tenant_admin',
             });

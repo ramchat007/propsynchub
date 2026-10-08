@@ -4,13 +4,8 @@ import { createServerSupabaseClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase';
 import { Tenant, UserRole } from '@/types';
 
-export const AUTHORIZED_ADMIN_EMAILS = [
-  'ramchat007@gmail.com',
-  'admin@raigadtropical.com',
-  'contact@raigadtropical.com',
-];
-
-export const PRIMARY_DEMO_TENANT_ID = '2f002373-c7f2-4127-842f-4bb20d7a1b64';
+import { AUTHORIZED_ADMIN_EMAILS, PRIMARY_DEMO_TENANT_ID } from '@/lib/constants';
+export { AUTHORIZED_ADMIN_EMAILS, PRIMARY_DEMO_TENANT_ID };
 
 export interface AuthenticatedAdminContext {
   authorized: boolean;
@@ -93,7 +88,7 @@ export async function getAuthenticatedAdminContext(): Promise<AuthenticatedAdmin
         await adminDb.from('profiles').insert({
           id: user.id,
           tenant_id: targetTenantId,
-          mobile_number: '+919820160376',
+          mobile_number: user.phone || '+919999999999',
           full_name: email.split('@')[0],
           role: 'tenant_admin',
         });

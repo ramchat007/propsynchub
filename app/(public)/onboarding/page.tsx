@@ -53,7 +53,7 @@ export default async function OnboardingPage() {
           </div>
 
           <div className="text-xs text-neutral-500">
-            Signed in as <span className="font-mono font-semibold text-neutral-800 dark:text-neutral-200">{user.phone || user.email || 'Owner'}</span>
+            Signed in as <span className="font-semibold text-neutral-800 dark:text-neutral-200">{user.email || 'Verified Account'}</span>
           </div>
         </div>
       </header>
@@ -61,7 +61,6 @@ export default async function OnboardingPage() {
       {/* Main Wizard Form */}
       <main className="mt-8">
         <OnboardingWizardClient
-          userPhone={user.phone || profile?.mobile_number}
           userEmail={user.email}
         />
       </main>

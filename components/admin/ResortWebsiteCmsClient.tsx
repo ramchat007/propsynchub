@@ -60,13 +60,13 @@ export default function ResortWebsiteCmsClient({ tenant }: ResortWebsiteCmsClien
     settings.google_maps_url || 'https://maps.google.com/?q=Raigad,Maharashtra'
   );
   const [whatsappNumber, setWhatsappNumber] = useState(
-    settings.whatsapp_number || tenant.contact_phone || '+91 98201 60376'
+    settings.whatsapp_number || tenant.contact_phone || '+91 99999 99999'
   );
   const [contactPhone, setContactPhone] = useState(
-    tenant.contact_phone || '+91 98201 60376'
+    tenant.contact_phone || '+91 99999 99999'
   );
   const [contactEmail, setContactEmail] = useState(
-    tenant.contact_email || 'stay@raigadtropical.com'
+    tenant.contact_email || 'stay@resort.com'
   );
   const [checkInTime, setCheckInTime] = useState(settings.check_in_time || '14:00');
   const [checkOutTime, setCheckOutTime] = useState(settings.check_out_time || '11:00');
@@ -281,6 +281,12 @@ export default function ResortWebsiteCmsClient({ tenant }: ResortWebsiteCmsClien
             className="border-b-2 border-transparent pb-3 text-xs sm:text-sm font-semibold text-stone-500 hover:border-stone-300 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200 flex items-center gap-2"
           >
             <span>💳</span> Payment Gateway
+          </Link>
+          <Link
+            href="/settings/subscription"
+            className="border-b-2 border-transparent pb-3 text-xs sm:text-sm font-semibold text-stone-500 hover:border-stone-300 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200 flex items-center gap-2"
+          >
+            <span>💎</span> Subscription &amp; SaaS
           </Link>
         </nav>
       </div>
@@ -535,7 +541,7 @@ export default function ResortWebsiteCmsClient({ tenant }: ResortWebsiteCmsClien
                 type="text"
                 value={whatsappNumber}
                 onChange={(e) => setWhatsappNumber(e.target.value)}
-                placeholder="+919820160376"
+                placeholder="+919999999999"
                 className="mt-1.5 w-full rounded-xl border border-neutral-300 bg-transparent px-3.5 py-2.5 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
               />
               <p className="mt-1 text-[11px] text-neutral-500">
