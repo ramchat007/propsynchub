@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import crypto from 'crypto';
 import { createAdminClient } from '@/lib/supabase';
 import { getAuthenticatedAdminContext } from '@/lib/auth/admin-guard';
+import { PRIMARY_DEMO_TENANT_ID } from '@/lib/constants';
 import {
   TenantSubscription,
   SubscriptionPlan,
@@ -11,9 +12,221 @@ import {
 } from '@/types';
 
 import {
-  SAAS_PLANS,
+  DEFAULT_SAAS_PLANS,
+  DEFAULT_PLATFORM_BANK_DETAILS,
+  PlatformPricingConfig,
   isSuperadmin,
 } from '@/lib/subscription-plans';
+
+/**
+ * 0. GET GLOBAL PLATFORM PRICING CONFIGURATION
+ * Fetches real-time price tiers and bank details configured by the platform owner.
+ * Falls back to DEFAULT_SAAS_PLANS if not yet modified in database.
+ */
+export async function getPlatformPricingConfig(): Promise<PlatformPricingConfig> {
+  try {
+    const adminDb = createAdminClient();
+    const { data: primaryTenant } = await adminDb
+      .from('tenants')
+      .select('settings')
+      .eq('id', PRIMARY_DEMO_TENANT_ID)
+      .maybeSingle();
+
+    const settings = (primaryTenant?.settings as Record<string, unknown>) || {};
+    const storedConfig = settings.platform_pricing as Partial<PlatformPricingConfig> | undefined;
+
+    if (!storedConfig || !storedConfig.plans) {
+      return {
+        plans: DEFAULT_SAAS_PLANS,
+        bankDetails: DEFAULT_PLATFORM_BANK_DETAILS,
+        trialDurationDays: 14,
+      };
+    }
+
+    return {
+      plans: {
+        starter: { ...DEFAULT_SAAS_PLANS.starter, ...(storedConfig.plans.starter || {}) },
+        pro: { ...DEFAULT_SAAS_PLANS.pro, ...(storedConfig.plans.pro || {}) },
+        enterprise: { ...DEFAULT_SAAS_PLANS.enterprise, ...(storedConfig.plans.enterprise || {}) },
+      },
+      bankDetails: {
+        ...DEFAULT_PLATFORM_BANK_DETAILS,
+        ...(storedConfig.bankDetails || {}),
+      },
+      trialDurationDays: storedConfig.trialDurationDays || 14,
+      updatedAt: storedConfig.updatedAt,
+      updatedBy: storedConfig.updatedBy,
+    };
+  } catch (err) {
+    console.warn('[Platform Pricing Config Read Error]:', err);
+    return {
+      plans: DEFAULT_SAAS_PLANS,
+      bankDetails: DEFAULT_PLATFORM_BANK_DETAILS,
+      trialDurationDays: 14,
+    };
+  }
+}
+
+/**
+ * 0.1 UPDATE GLOBAL PLATFORM PRICING TIERS & BANK DETAILS
+ * Guarded strictly to the Platform Owner (Superadmin / ramchat007@gmail.com).
+ * Any changes here instantly update the public checkout matrix and invoices.
+ */
+export async function updatePlatformPricingConfig(formData: FormData) {
+  try {
+    const auth = await getAuthenticatedAdminContext();
+    if (!auth.authorized || !auth.user) {
+      return { success: false, error: 'Unauthorized: Please log in.' };
+    }
+
+    const currentEmail = (auth.user.email || '').toLowerCase().trim();
+    if (!isSuperadmin(currentEmail)) {
+      return { success: false, error: 'Unauthorized: Only platform owner (Superadmin) can update pricing tiers.' };
+    }
+
+    const starterMonthly = Number(formData.get('starterMonthly')) || DEFAULT_SAAS_PLANS.starter.monthlyPrice;
+    const starterYearly = Number(formData.get('starterYearly')) || DEFAULT_SAAS_PLANS.starter.yearlyPrice;
+
+    const proMonthly = Number(formData.get('proMonthly')) || DEFAULT_SAAS_PLANS.pro.monthlyPrice;
+    const proYearly = Number(formData.get('proYearly')) || DEFAULT_SAAS_PLANS.pro.yearlyPrice;
+
+    const enterpriseMonthly = Number(formData.get('enterpriseMonthly')) || DEFAULT_SAAS_PLANS.enterprise.monthlyPrice;
+    const enterpriseYearly = Number(formData.get('enterpriseYearly')) || DEFAULT_SAAS_PLANS.enterprise.yearlyPrice;
+
+    const trialDurationDays = Number(formData.get('trialDurationDays')) || 14;
+
+    const accountName = formData.get('accountName')?.toString()?.trim() || DEFAULT_PLATFORM_BANK_DETAILS.accountName;
+    const bankName = formData.get('bankName')?.toString()?.trim() || DEFAULT_PLATFORM_BANK_DETAILS.bankName;
+    const accountNumber = formData.get('accountNumber')?.toString()?.trim() || DEFAULT_PLATFORM_BANK_DETAILS.accountNumber;
+    const ifscCode = formData.get('ifscCode')?.toString()?.trim() || DEFAULT_PLATFORM_BANK_DETAILS.ifscCode;
+    const branch = formData.get('branch')?.toString()?.trim() || DEFAULT_PLATFORM_BANK_DETAILS.branch;
+    const upiId = formData.get('upiId')?.toString()?.trim() || DEFAULT_PLATFORM_BANK_DETAILS.upiId;
+    const supportEmail = formData.get('supportEmail')?.toString()?.trim() || DEFAULT_PLATFORM_BANK_DETAILS.supportEmail;
+
+    const currentConfig = await getPlatformPricingConfig();
+
+    const newConfig: PlatformPricingConfig = {
+      plans: {
+        starter: {
+          ...currentConfig.plans.starter,
+          monthlyPrice: starterMonthly,
+          yearlyPrice: starterYearly,
+        },
+        pro: {
+          ...currentConfig.plans.pro,
+          monthlyPrice: proMonthly,
+          yearlyPrice: proYearly,
+        },
+        enterprise: {
+          ...currentConfig.plans.enterprise,
+          monthlyPrice: enterpriseMonthly,
+          yearlyPrice: enterpriseYearly,
+        },
+      },
+      bankDetails: {
+        accountName,
+        bankName,
+        accountNumber,
+        ifscCode,
+        branch,
+        upiId,
+        supportEmail,
+      },
+      trialDurationDays,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentEmail,
+    };
+
+    const adminDb = createAdminClient();
+    const { data: primaryTenant } = await adminDb
+      .from('tenants')
+      .select('settings')
+      .eq('id', PRIMARY_DEMO_TENANT_ID)
+      .maybeSingle();
+
+    const settings = (primaryTenant?.settings as Record<string, unknown>) || {};
+
+    const { error: updateErr } = await adminDb
+      .from('tenants')
+      .update({
+        settings: {
+          ...settings,
+          platform_pricing: newConfig,
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', PRIMARY_DEMO_TENANT_ID);
+
+    if (updateErr) {
+      return { success: false, error: `Failed to save pricing config: ${updateErr.message}` };
+    }
+
+    // Write audit log
+    try {
+      await adminDb.from('audit_logs').insert({
+        tenant_id: PRIMARY_DEMO_TENANT_ID,
+        user_id: auth.user.id,
+        user_name: currentEmail,
+        user_role: 'superadmin',
+        action: 'PLATFORM_PRICING_UPDATED',
+        entity_type: 'platform_config',
+        entity_id: PRIMARY_DEMO_TENANT_ID,
+        details: newConfig,
+      });
+    } catch (auditErr) {
+      console.warn('[Audit Warning]:', auditErr);
+    }
+
+    revalidatePath('/settings/subscription');
+    revalidatePath('/onboarding');
+    revalidatePath('/dashboard');
+
+    return {
+      success: true,
+      message: 'SaaS Platform Pricing Tiers & Bank Details successfully updated!',
+      config: newConfig,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Error updating pricing config.';
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * 0.2 RESET PLATFORM PRICING CONFIG TO FACTORY DEFAULTS
+ */
+export async function resetPlatformPricingConfig() {
+  try {
+    const auth = await getAuthenticatedAdminContext();
+    if (!auth.authorized || !auth.user || !isSuperadmin(auth.user.email)) {
+      return { success: false, error: 'Unauthorized.' };
+    }
+
+    const adminDb = createAdminClient();
+    const { data: primaryTenant } = await adminDb
+      .from('tenants')
+      .select('settings')
+      .eq('id', PRIMARY_DEMO_TENANT_ID)
+      .maybeSingle();
+
+    const settings = (primaryTenant?.settings as Record<string, unknown>) || {};
+    const { ...clearedSettings } = settings;
+    delete clearedSettings.platform_pricing;
+
+    await adminDb
+      .from('tenants')
+      .update({
+        settings: clearedSettings,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', PRIMARY_DEMO_TENANT_ID);
+
+    revalidatePath('/settings/subscription');
+    return { success: true, message: 'Platform pricing reset to initial system defaults.' };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Error resetting pricing.' };
+  }
+}
 
 /**
  * 1. GET TENANT SUBSCRIPTION STATUS
@@ -44,13 +257,14 @@ export async function getTenantSubscription(tenantIdInput?: string) {
       return { success: false, error: 'Resort tenant not found.' };
     }
 
+    const platformConfig = await getPlatformPricingConfig();
     const settings = (tenant.settings as Record<string, unknown>) || {};
     let rawSub = settings.subscription as TenantSubscription | undefined;
 
-    // Default 14-day trial if no subscription record exists yet
+    // Default trial based on platformConfig.trialDurationDays
     if (!rawSub) {
       const createdAt = new Date(tenant.created_at || Date.now());
-      const trialEndsAt = new Date(createdAt.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
+      const trialEndsAt = new Date(createdAt.getTime() + (platformConfig.trialDurationDays || 14) * 24 * 60 * 60 * 1000).toISOString();
       const isPast = new Date() > new Date(trialEndsAt);
 
       rawSub = {
@@ -84,6 +298,7 @@ export async function getTenantSubscription(tenantIdInput?: string) {
       tenantName: tenant.name,
       tenantSubdomain: tenant.subdomain,
       primaryColorHex: (settings.primary_color_hex as string) || '#059669',
+      platformConfig,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to retrieve subscription.';
@@ -106,9 +321,13 @@ export async function submitOfflineSubscriptionPayment(formData: FormData) {
       return { success: false, error: 'Resort ID is required.' };
     }
 
+    const platformConfig = await getPlatformPricingConfig();
     const plan = (formData.get('plan')?.toString() || 'pro') as SubscriptionPlan;
     const billingCycle = (formData.get('billingCycle')?.toString() || 'yearly') as 'monthly' | 'yearly';
-    const amountInr = Number(formData.get('amountInr')) || (billingCycle === 'yearly' ? SAAS_PLANS[plan].yearlyPrice : SAAS_PLANS[plan].monthlyPrice);
+    
+    const planMeta = platformConfig.plans[plan] || DEFAULT_SAAS_PLANS[plan];
+    const defaultPrice = billingCycle === 'yearly' ? planMeta.yearlyPrice : planMeta.monthlyPrice;
+    const amountInr = Number(formData.get('amountInr')) || defaultPrice;
     const utrReference = formData.get('utrReference')?.toString()?.trim();
     const notes = formData.get('notes')?.toString()?.trim() || '';
 
@@ -233,6 +452,7 @@ export async function approveTenantSubscription(formData: FormData) {
       return { success: false, error: 'Resort ID is required.' };
     }
 
+    const platformConfig = await getPlatformPricingConfig();
     const durationMonths = Number(formData.get('durationMonths')) || 12; // Default 1 year
     const planOverride = formData.get('plan')?.toString() as SubscriptionPlan | undefined;
     const approvalNotes = formData.get('approvalNotes')?.toString()?.trim() || 'Approved by Platform Owner';
@@ -267,6 +487,7 @@ export async function approveTenantSubscription(formData: FormData) {
     }
 
     const targetPlan = planOverride || existingSub.plan || 'pro';
+    const planMeta = platformConfig.plans[targetPlan] || DEFAULT_SAAS_PLANS[targetPlan];
 
     // Update payment history records
     const history = Array.isArray(existingSub.payment_history) ? [...existingSub.payment_history] : [];
@@ -279,7 +500,7 @@ export async function approveTenantSubscription(formData: FormData) {
       history.unshift({
         id: `sub_pay_${Date.now()}`,
         date: new Date().toISOString(),
-        amount: existingSub.amount_inr || (durationMonths >= 12 ? SAAS_PLANS[targetPlan].yearlyPrice : SAAS_PLANS[targetPlan].monthlyPrice),
+        amount: existingSub.amount_inr || (durationMonths >= 12 ? planMeta.yearlyPrice : planMeta.monthlyPrice),
         plan: targetPlan,
         billing_cycle: durationMonths >= 12 ? 'yearly' : 'monthly',
         mode: durationMonths >= 120 ? 'complimentary' : existingSub.payment_mode || 'offline_bank_transfer',
@@ -456,7 +677,9 @@ export async function createOnlineSubscriptionOrder(formData: FormData) {
       };
     }
 
-    const amountInr = billingCycle === 'yearly' ? SAAS_PLANS[plan].yearlyPrice : SAAS_PLANS[plan].monthlyPrice;
+    const platformConfig = await getPlatformPricingConfig();
+    const planMeta = platformConfig.plans[plan] || DEFAULT_SAAS_PLANS[plan];
+    const amountInr = billingCycle === 'yearly' ? planMeta.yearlyPrice : planMeta.monthlyPrice;
     const amountInPaise = Math.round(amountInr * 100);
 
     const authHeader = Buffer.from(`${platformKeyId}:${platformKeySecret}`).toString('base64');
@@ -552,11 +775,13 @@ export async function verifyOnlineSubscriptionPayment(formData: FormData) {
       return { success: false, error: 'Resort record not found.' };
     }
 
+    const platformConfig = await getPlatformPricingConfig();
+    const planMeta = platformConfig.plans[plan] || DEFAULT_SAAS_PLANS[plan];
     const durationMonths = billingCycle === 'yearly' ? 12 : 1;
     const activeDate = new Date();
     activeDate.setMonth(activeDate.getMonth() + durationMonths);
 
-    const amountInr = billingCycle === 'yearly' ? SAAS_PLANS[plan].yearlyPrice : SAAS_PLANS[plan].monthlyPrice;
+    const amountInr = billingCycle === 'yearly' ? planMeta.yearlyPrice : planMeta.monthlyPrice;
     const settings = (tenant.settings as Record<string, unknown>) || {};
     const existingSub = (settings.subscription as TenantSubscription) || {
       status: 'trial',

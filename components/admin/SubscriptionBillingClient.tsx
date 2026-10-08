@@ -8,14 +8,17 @@ import {
   TenantSubscriptionPaymentRecord,
 } from '@/types';
 import {
-  SAAS_PLANS,
-  PLATFORM_BANK_DETAILS,
+  DEFAULT_SAAS_PLANS,
+  DEFAULT_PLATFORM_BANK_DETAILS,
+  PlatformPricingConfig,
 } from '@/lib/subscription-plans';
 import {
   submitOfflineSubscriptionPayment,
   approveTenantSubscription,
   rejectTenantSubscription,
   createOnlineSubscriptionOrder,
+  updatePlatformPricingConfig,
+  resetPlatformPricingConfig,
 } from '@/app/actions/subscription';
 import { ToastContainer, ToastMessage } from './Toast';
 
@@ -40,6 +43,7 @@ interface SubscriptionBillingClientProps {
   isSuperadmin: boolean;
   primaryColorHex?: string;
   pendingRequests?: PendingRequestItem[];
+  initialPlatformConfig?: PlatformPricingConfig;
 }
 
 export default function SubscriptionBillingClient({
@@ -50,8 +54,17 @@ export default function SubscriptionBillingClient({
   isSuperadmin,
   primaryColorHex = '#059669',
   pendingRequests = [],
+  initialPlatformConfig,
 }: SubscriptionBillingClientProps) {
   const [sub, setSub] = useState<TenantSubscription>(initialSub);
+  const [platformConfig, setPlatformConfig] = useState<PlatformPricingConfig>(
+    initialPlatformConfig || {
+      plans: DEFAULT_SAAS_PLANS,
+      bankDetails: DEFAULT_PLATFORM_BANK_DETAILS,
+      trialDurationDays: 14,
+    }
+  );
+
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>(sub.plan || 'pro');
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>(sub.billing_cycle || 'yearly');
   const [activePaymentTab, setActivePaymentTab] = useState<'offline' | 'online'>('offline');
@@ -60,9 +73,28 @@ export default function SubscriptionBillingClient({
   const [utrNumber, setUtrNumber] = useState(sub.offline_reference || '');
   const [offlineNotes, setOfflineNotes] = useState('');
 
-  // Superadmin Action State
+  // Superadmin Approval State
   const [adminNotes, setAdminNotes] = useState('');
   const [allPending, setAllPending] = useState<PendingRequestItem[]>(pendingRequests);
+
+  // Superadmin Pricing Editor State
+  const [showPriceEditor, setShowPriceEditor] = useState(false);
+  const [editStarterMonthly, setEditStarterMonthly] = useState(platformConfig.plans.starter.monthlyPrice);
+  const [editStarterYearly, setEditStarterYearly] = useState(platformConfig.plans.starter.yearlyPrice);
+  const [editProMonthly, setEditProMonthly] = useState(platformConfig.plans.pro.monthlyPrice);
+  const [editProYearly, setEditProYearly] = useState(platformConfig.plans.pro.yearlyPrice);
+  const [editEnterpriseMonthly, setEditEnterpriseMonthly] = useState(platformConfig.plans.enterprise.monthlyPrice);
+  const [editEnterpriseYearly, setEditEnterpriseYearly] = useState(platformConfig.plans.enterprise.yearlyPrice);
+  const [editTrialDays, setEditTrialDays] = useState(platformConfig.trialDurationDays || 14);
+
+  // Bank Editor State
+  const [editAccountName, setEditAccountName] = useState(platformConfig.bankDetails.accountName);
+  const [editBankName, setEditBankName] = useState(platformConfig.bankDetails.bankName);
+  const [editAccountNumber, setEditAccountNumber] = useState(platformConfig.bankDetails.accountNumber);
+  const [editIfsc, setEditIfsc] = useState(platformConfig.bankDetails.ifscCode);
+  const [editBranch, setEditBranch] = useState(platformConfig.bankDetails.branch);
+  const [editUpiId, setEditUpiId] = useState(platformConfig.bankDetails.upiId);
+  const [editSupportEmail, setEditSupportEmail] = useState(platformConfig.bankDetails.supportEmail);
 
   const [isPending, startTransition] = useTransition();
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -75,7 +107,7 @@ export default function SubscriptionBillingClient({
     }, 4500);
   }
 
-  const currentPlanMeta = SAAS_PLANS[selectedPlan];
+  const currentPlanMeta = platformConfig.plans[selectedPlan] || DEFAULT_SAAS_PLANS[selectedPlan];
   const payableAmount = billingCycle === 'yearly' ? currentPlanMeta.yearlyPrice : currentPlanMeta.monthlyPrice;
 
   // Submit Offline Payment
@@ -133,7 +165,6 @@ export default function SubscriptionBillingClient({
             approved_at: new Date().toISOString(),
           }));
         }
-        // Remove from pending list
         setAllPending((prev) => prev.filter((p) => p.tenantId !== targetTenantId));
       } else {
         addToast('error', res.error || 'Failed to approve subscription.');
@@ -164,6 +195,63 @@ export default function SubscriptionBillingClient({
     });
   }
 
+  // Superadmin Update Platform Pricing Config
+  function handleSavePricingConfig(e: React.FormEvent) {
+    e.preventDefault();
+    startTransition(async () => {
+      const formData = new FormData();
+      formData.set('starterMonthly', editStarterMonthly.toString());
+      formData.set('starterYearly', editStarterYearly.toString());
+      formData.set('proMonthly', editProMonthly.toString());
+      formData.set('proYearly', editProYearly.toString());
+      formData.set('enterpriseMonthly', editEnterpriseMonthly.toString());
+      formData.set('enterpriseYearly', editEnterpriseYearly.toString());
+      formData.set('trialDurationDays', editTrialDays.toString());
+
+      formData.set('accountName', editAccountName);
+      formData.set('bankName', editBankName);
+      formData.set('accountNumber', editAccountNumber);
+      formData.set('ifscCode', editIfsc);
+      formData.set('branch', editBranch);
+      formData.set('upiId', editUpiId);
+      formData.set('supportEmail', editSupportEmail);
+
+      const res = await updatePlatformPricingConfig(formData);
+      if (res.success && res.config) {
+        addToast('success', res.message || 'Pricing tiers and bank details updated!');
+        setPlatformConfig(res.config);
+        setShowPriceEditor(false);
+      } else {
+        addToast('error', res.error || 'Failed to update pricing tiers.');
+      }
+    });
+  }
+
+  // Reset to Factory Defaults
+  function handleResetPricingConfig() {
+    startTransition(async () => {
+      const res = await resetPlatformPricingConfig();
+      if (res.success) {
+        addToast('info', res.message || 'Reset to defaults.');
+        setPlatformConfig({
+          plans: DEFAULT_SAAS_PLANS,
+          bankDetails: DEFAULT_PLATFORM_BANK_DETAILS,
+          trialDurationDays: 14,
+        });
+        setEditStarterMonthly(DEFAULT_SAAS_PLANS.starter.monthlyPrice);
+        setEditStarterYearly(DEFAULT_SAAS_PLANS.starter.yearlyPrice);
+        setEditProMonthly(DEFAULT_SAAS_PLANS.pro.monthlyPrice);
+        setEditProYearly(DEFAULT_SAAS_PLANS.pro.yearlyPrice);
+        setEditEnterpriseMonthly(DEFAULT_SAAS_PLANS.enterprise.monthlyPrice);
+        setEditEnterpriseYearly(DEFAULT_SAAS_PLANS.enterprise.yearlyPrice);
+        setEditTrialDays(14);
+        setShowPriceEditor(false);
+      } else {
+        addToast('error', res.error || 'Failed to reset.');
+      }
+    });
+  }
+
   // Online Razorpay Payment Trigger
   function handleOnlineOrder() {
     startTransition(async () => {
@@ -174,8 +262,7 @@ export default function SubscriptionBillingClient({
 
       const res = await createOnlineSubscriptionOrder(formData);
       if (res.success && res.orderId) {
-        addToast('info', `Razorpay Order #${res.orderId} initialized. Launching checkout...`);
-        // If live checkout is wired with Razorpay script:
+        addToast('info', `Razorpay Order #${res.orderId} initialized.`);
       } else {
         addToast('info', res.message || res.error || 'Gateway offline.');
       }
@@ -199,11 +286,23 @@ export default function SubscriptionBillingClient({
             </p>
           </div>
 
-          {isSuperadmin && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-50 px-3.5 py-1 text-xs font-bold text-purple-800 shadow-xs dark:border-purple-800/40 dark:bg-purple-950/40 dark:text-purple-300">
-              <span>👑</span> Superadmin Mode
-            </span>
-          )}
+          <div className="flex items-center gap-2.5">
+            {isSuperadmin && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowPriceEditor((prev) => !prev)}
+                  className="rounded-xl border border-purple-300 bg-purple-50 px-3.5 py-1.5 text-xs font-bold text-purple-900 shadow-xs hover:bg-purple-100 dark:border-purple-800 dark:bg-purple-950/60 dark:text-purple-200"
+                >
+                  {showPriceEditor ? '✕ Close Price Editor' : '⚙️ Set / Edit Price Tiers'}
+                </button>
+
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-50 px-3.5 py-1 text-xs font-bold text-purple-800 shadow-xs dark:border-purple-800/40 dark:bg-purple-950/40 dark:text-purple-300">
+                  <span>👑</span> Superadmin
+                </span>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -238,6 +337,277 @@ export default function SubscriptionBillingClient({
         </nav>
       </div>
 
+      {/* SUPERADMIN DYNAMIC PRICING TIERS & BANK EDITOR (PLATFORM OWNER ONLY) */}
+      {isSuperadmin && showPriceEditor && (
+        <div className="rounded-2xl border-2 border-purple-300 bg-white p-6 shadow-md dark:border-purple-800 dark:bg-neutral-900 transition-all">
+          <div className="flex items-center justify-between border-b border-purple-100 pb-4 dark:border-neutral-800">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🛠️</span>
+                <h2 className="text-base font-bold text-purple-950 dark:text-purple-200">
+                  Platform Pricing &amp; Commercials Configuration (Platform Owner Only)
+                </h2>
+              </div>
+              <p className="mt-1 text-xs text-stone-500">
+                You can change and finalize the prices at any time here. All updates immediately reflect across the platform checkout matrix.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleResetPricingConfig}
+              disabled={isPending}
+              className="text-xs font-semibold text-stone-500 hover:text-stone-800 underline dark:hover:text-stone-300"
+            >
+              Reset to Defaults
+            </button>
+          </div>
+
+          <form onSubmit={handleSavePricingConfig} className="mt-5 space-y-6">
+            {/* 1. Price Tiers Matrix */}
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-3">
+                1. Tiered Pricing Plans (INR ₹)
+              </h3>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                {/* Starter Tier */}
+                <div className="rounded-xl border border-stone-200 p-4 bg-stone-50/60 dark:border-neutral-800 dark:bg-neutral-800/40">
+                  <p className="text-sm font-bold text-stone-900 dark:text-stone-100">Starter Resort Plan</p>
+                  <p className="text-[11px] text-stone-400">Up to 10 Rooms</p>
+                  <div className="mt-3 space-y-2.5">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-stone-600 dark:text-stone-400">
+                        Monthly Price (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={editStarterMonthly}
+                        onChange={(e) => setEditStarterMonthly(Number(e.target.value))}
+                        className="mt-1 block w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-bold focus:border-purple-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-stone-600 dark:text-stone-400">
+                        Annual Price (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={editStarterYearly}
+                        onChange={(e) => setEditStarterYearly(Number(e.target.value))}
+                        className="mt-1 block w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-bold focus:border-purple-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Pro Tier */}
+                <div className="rounded-xl border-2 border-purple-300 p-4 bg-purple-50/30 dark:border-purple-900 dark:bg-purple-950/20">
+                  <p className="text-sm font-bold text-purple-900 dark:text-purple-200">Pro Resort &amp; Spa (Recommended)</p>
+                  <p className="text-[11px] text-purple-500">Unlimited Rooms + CMS</p>
+                  <div className="mt-3 space-y-2.5">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-stone-600 dark:text-stone-400">
+                        Monthly Price (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={editProMonthly}
+                        onChange={(e) => setEditProMonthly(Number(e.target.value))}
+                        className="mt-1 block w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-bold focus:border-purple-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-stone-600 dark:text-stone-400">
+                        Annual Price (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={editProYearly}
+                        onChange={(e) => setEditProYearly(Number(e.target.value))}
+                        className="mt-1 block w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-bold focus:border-purple-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Enterprise Tier */}
+                <div className="rounded-xl border border-stone-200 p-4 bg-stone-50/60 dark:border-neutral-800 dark:bg-neutral-800/40">
+                  <p className="text-sm font-bold text-stone-900 dark:text-stone-100">Enterprise Portfolio</p>
+                  <p className="text-[11px] text-stone-400">Multi-Property Chains</p>
+                  <div className="mt-3 space-y-2.5">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-stone-600 dark:text-stone-400">
+                        Monthly Price (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={editEnterpriseMonthly}
+                        onChange={(e) => setEditEnterpriseMonthly(Number(e.target.value))}
+                        className="mt-1 block w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-bold focus:border-purple-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-stone-600 dark:text-stone-400">
+                        Annual Price (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={editEnterpriseYearly}
+                        onChange={(e) => setEditEnterpriseYearly(Number(e.target.value))}
+                        className="mt-1 block w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-bold focus:border-purple-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Free Trial Configuration */}
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2">
+                2. Free Trial Period (Days)
+              </h3>
+              <div className="max-w-xs">
+                <input
+                  type="number"
+                  min="1"
+                  max="90"
+                  required
+                  value={editTrialDays}
+                  onChange={(e) => setEditTrialDays(Number(e.target.value))}
+                  className="block w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-bold focus:border-purple-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                />
+                <p className="mt-1 text-[11px] text-stone-400">
+                  New resorts created via the wizard get this many days of auto-approved trial before payment.
+                </p>
+              </div>
+            </div>
+
+            {/* 3. Platform Owner Bank Details */}
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-3">
+                3. Platform Owner Bank &amp; UPI Invoicing Details
+              </h3>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-stone-600 dark:text-stone-400">
+                    Beneficiary Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editAccountName}
+                    onChange={(e) => setEditAccountName(e.target.value)}
+                    className="mt-1 block w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-stone-600 dark:text-stone-400">
+                    Bank Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editBankName}
+                    onChange={(e) => setEditBankName(e.target.value)}
+                    className="mt-1 block w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-stone-600 dark:text-stone-400">
+                    Account Number
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editAccountNumber}
+                    onChange={(e) => setEditAccountNumber(e.target.value)}
+                    className="mt-1 block w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-mono dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-stone-600 dark:text-stone-400">
+                    IFSC Code
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editIfsc}
+                    onChange={(e) => setEditIfsc(e.target.value)}
+                    className="mt-1 block w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-mono dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-stone-600 dark:text-stone-400">
+                    Branch / City
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editBranch}
+                    onChange={(e) => setEditBranch(e.target.value)}
+                    className="mt-1 block w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-stone-600 dark:text-stone-400">
+                    UPI ID / VPA
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editUpiId}
+                    onChange={(e) => setEditUpiId(e.target.value)}
+                    className="mt-1 block w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-mono dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-stone-600 dark:text-stone-400">
+                    Support / Invoicing Email
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={editSupportEmail}
+                    onChange={(e) => setEditSupportEmail(e.target.value)}
+                    className="mt-1 block w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-3 border-t border-purple-100 dark:border-neutral-800">
+              <button
+                type="submit"
+                disabled={isPending}
+                className="rounded-xl bg-purple-700 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-purple-600 disabled:opacity-50"
+              >
+                {isPending ? 'Saving Config...' : '💾 Save Platform Pricing & Bank Details'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowPriceEditor(false)}
+                className="rounded-xl border border-stone-300 px-4 py-2.5 text-xs font-semibold text-stone-700 hover:bg-stone-50 dark:border-neutral-700 dark:text-stone-300"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* 1. CURRENT SUBSCRIPTION STATUS HERO */}
       <div
         className={`rounded-2xl border p-6 shadow-xs transition-all ${
@@ -267,7 +637,7 @@ export default function SubscriptionBillingClient({
                   : '14-Day Free Trial'}
               </span>
               <span className="text-xs font-semibold text-stone-600 dark:text-stone-400">
-                Plan: <strong className="text-stone-900 dark:text-stone-100">{SAAS_PLANS[sub.plan || 'pro'].name}</strong>
+                Plan: <strong className="text-stone-900 dark:text-stone-100">{currentPlanMeta.name}</strong>
               </span>
             </div>
 
@@ -484,7 +854,7 @@ export default function SubscriptionBillingClient({
         {/* Pricing Cards */}
         <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
           {(['starter', 'pro', 'enterprise'] as SubscriptionPlan[]).map((planKey) => {
-            const plan = SAAS_PLANS[planKey];
+            const plan = platformConfig.plans[planKey] || DEFAULT_SAAS_PLANS[planKey];
             const isSelected = selectedPlan === planKey;
             const price = billingCycle === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice;
             const isPro = planKey === 'pro';
@@ -630,12 +1000,12 @@ export default function SubscriptionBillingClient({
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="rounded-xl border border-stone-200 bg-stone-50/70 p-4 dark:border-neutral-800 dark:bg-neutral-800/40">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400">Platform Beneficiary</p>
-                <p className="mt-1 text-sm font-bold text-stone-900 dark:text-stone-100">{PLATFORM_BANK_DETAILS.accountName}</p>
+                <p className="mt-1 text-sm font-bold text-stone-900 dark:text-stone-100">{platformConfig.bankDetails.accountName}</p>
                 <div className="mt-3 space-y-1 text-xs text-stone-600 dark:text-stone-300">
-                  <p>Bank: <strong className="text-stone-900 dark:text-stone-100">{PLATFORM_BANK_DETAILS.bankName}</strong></p>
-                  <p>Account No: <strong className="font-mono text-stone-900 dark:text-stone-100">{PLATFORM_BANK_DETAILS.accountNumber}</strong></p>
-                  <p>IFSC Code: <strong className="font-mono text-stone-900 dark:text-stone-100">{PLATFORM_BANK_DETAILS.ifscCode}</strong></p>
-                  <p>Branch: {PLATFORM_BANK_DETAILS.branch}</p>
+                  <p>Bank: <strong className="text-stone-900 dark:text-stone-100">{platformConfig.bankDetails.bankName}</strong></p>
+                  <p>Account No: <strong className="font-mono text-stone-900 dark:text-stone-100">{platformConfig.bankDetails.accountNumber}</strong></p>
+                  <p>IFSC Code: <strong className="font-mono text-stone-900 dark:text-stone-100">{platformConfig.bankDetails.ifscCode}</strong></p>
+                  <p>Branch: {platformConfig.bankDetails.branch}</p>
                 </div>
               </div>
 
@@ -643,12 +1013,12 @@ export default function SubscriptionBillingClient({
                 <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400">Direct UPI / VPA</p>
                 <div className="mt-2 flex items-center gap-2">
                   <span className="font-mono text-sm font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800">
-                    {PLATFORM_BANK_DETAILS.upiId}
+                    {platformConfig.bankDetails.upiId}
                   </span>
                   <button
                     type="button"
                     onClick={() => {
-                      navigator.clipboard.writeText(PLATFORM_BANK_DETAILS.upiId);
+                      navigator.clipboard.writeText(platformConfig.bankDetails.upiId);
                       addToast('success', 'UPI ID copied to clipboard!');
                     }}
                     className="rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-stone-600 hover:bg-stone-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-stone-300"
@@ -660,7 +1030,7 @@ export default function SubscriptionBillingClient({
                   Compatible with BHIM, Google Pay, PhonePe, Paytm, or any Indian banking app.
                 </p>
                 <p className="mt-1 text-xs text-stone-500">
-                  Platform Owner Support: <a href={`mailto:${PLATFORM_BANK_DETAILS.supportEmail}`} className="underline font-semibold">{PLATFORM_BANK_DETAILS.supportEmail}</a>
+                  Platform Support: <a href={`mailto:${platformConfig.bankDetails.supportEmail}`} className="underline font-semibold">{platformConfig.bankDetails.supportEmail}</a>
                 </p>
               </div>
             </div>
@@ -792,7 +1162,7 @@ export default function SubscriptionBillingClient({
               ) : (
                 <tr>
                   <td colSpan={6} className="py-6 text-center text-stone-400">
-                    No billing history records found. Your 14-day trial is currently in progress.
+                    No billing history records found. Your free trial is currently in progress.
                   </td>
                 </tr>
               )}

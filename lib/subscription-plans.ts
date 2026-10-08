@@ -3,18 +3,35 @@ import { AUTHORIZED_ADMIN_EMAILS } from '@/lib/constants';
 
 export const PLATFORM_SUPERADMIN_EMAIL = 'ramchat007@gmail.com';
 
-// Standard SaaS Pricing Tier Definitions (PropSyncHub)
-export const SAAS_PLANS: Record<
-  SubscriptionPlan,
-  {
-    name: string;
-    monthlyPrice: number;
-    yearlyPrice: number;
-    tagline: string;
-    features: string[];
-    maxRooms: number | 'Unlimited';
-  }
-> = {
+export interface PlanDefinition {
+  name: string;
+  monthlyPrice: number;
+  yearlyPrice: number;
+  tagline: string;
+  features: string[];
+  maxRooms: number | 'Unlimited';
+}
+
+export interface PlatformBankDetails {
+  accountName: string;
+  bankName: string;
+  accountNumber: string;
+  ifscCode: string;
+  branch: string;
+  upiId: string;
+  supportEmail: string;
+}
+
+export interface PlatformPricingConfig {
+  plans: Record<SubscriptionPlan, PlanDefinition>;
+  bankDetails: PlatformBankDetails;
+  trialDurationDays: number;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+// Default SaaS Pricing Tier Definitions (PropSyncHub)
+export const DEFAULT_SAAS_PLANS: Record<SubscriptionPlan, PlanDefinition> = {
   starter: {
     name: 'Starter Resort',
     monthlyPrice: 1999,
@@ -64,8 +81,8 @@ export const SAAS_PLANS: Record<
   },
 };
 
-// Platform Owner Offline Bank Details (can be configured or customized)
-export const PLATFORM_BANK_DETAILS = {
+// Default Platform Owner Offline Bank Details
+export const DEFAULT_PLATFORM_BANK_DETAILS: PlatformBankDetails = {
   accountName: 'PropSyncHub SaaS (Rupesh Mestry)',
   bankName: 'HDFC Bank Ltd.',
   accountNumber: '50200088924156',
@@ -74,6 +91,10 @@ export const PLATFORM_BANK_DETAILS = {
   upiId: 'ramchat007@okhdfcbank',
   supportEmail: 'ramchat007@gmail.com',
 };
+
+// Backwards compatibility aliases
+export const SAAS_PLANS = DEFAULT_SAAS_PLANS;
+export const PLATFORM_BANK_DETAILS = DEFAULT_PLATFORM_BANK_DETAILS;
 
 /**
  * Helper to check if current user is platform superadmin

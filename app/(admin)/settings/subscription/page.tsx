@@ -72,6 +72,7 @@ export default async function SubscriptionSettingsPage() {
         isSuperadmin={userIsSuperadmin}
         primaryColorHex={primaryColorHex}
         pendingRequests={pendingRequests}
+        initialPlatformConfig={subResult.platformConfig}
       />
     </div>
   );
