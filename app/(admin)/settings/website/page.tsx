@@ -1,79 +1,21 @@
 import React from 'react';
 import { redirect } from 'next/navigation';
-import { createServerSupabaseClient } from '@/lib/supabase-server';
-import { createAdminClient } from '@/lib/supabase';
+import { requireAdminAuth } from '@/lib/auth/admin-guard';
 import ResortWebsiteCmsClient from '@/components/admin/ResortWebsiteCmsClient';
-import { Tenant } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ResortWebsiteCmsPage() {
-  const supabase = await createServerSupabaseClient();
-  const adminDb = createAdminClient();
+  const auth = await requireAdminAuth('/settings/website');
 
-  // 1. Authenticate user
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect('/login?redirectTo=/settings/website');
-  }
-
-  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-  // 2. Resolve User Profile & Tenant ID
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('tenant_id, role')
-    .eq('id', user.id)
-    .maybeSingle();
-
-  if (profile?.role === 'staff') {
+  // P1.3 Role Guard: Staff cannot edit website settings
+  if (auth.role === 'staff') {
     redirect('/dashboard');
   }
 
-  let tenantId = profile?.tenant_id && UUID_REGEX.test(profile.tenant_id) ? profile.tenant_id : undefined;
-  if (!tenantId) {
-    const envId = process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID;
-    if (envId && UUID_REGEX.test(envId)) {
-      tenantId = envId;
-    }
-  }
-
-  let tenant: Tenant | null = null;
-  if (tenantId) {
-    const { data: tenantData } = await adminDb
-      .from('tenants')
-      .select('*')
-      .eq('id', tenantId)
-      .maybeSingle();
-
-    if (tenantData) tenant = tenantData as unknown as Tenant;
-  }
-
-  if (!tenant) {
-    const { data: fallbackTenants } = await adminDb
-      .from('tenants')
-      .select('*')
-      .eq('is_active', true)
-      .limit(1);
-
-    if (fallbackTenants && fallbackTenants[0]) {
-      tenant = fallbackTenants[0] as unknown as Tenant;
-    }
-  }
-
-  if (!tenant) {
-    return (
-      <div className="rounded-2xl border border-neutral-200 bg-white p-8 text-center dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-lg font-bold">No active resort found</h2>
-        <p className="mt-1 text-xs text-neutral-500">
-          Please complete resort onboarding or initialize demo data.
-        </p>
-      </div>
-    );
-  }
-
-  return <ResortWebsiteCmsClient tenant={tenant} />;
+  return (
+    <div className="p-4 sm:p-6 lg:p-8">
+      <ResortWebsiteCmsClient tenant={auth.tenant!} />
+    </div>
+  );
 }

@@ -157,7 +157,7 @@ export default function ReportsDashboardClient({
       {/* =================================================================== */}
       {/* 2. CORE ROI & HOSPITALITY METRIC CARDS */}
       {/* =================================================================== */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {/* Card 1: Gross Direct Revenue */}
         <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-xs dark:border-neutral-800 dark:bg-neutral-900">
           <div className="flex items-center justify-between">

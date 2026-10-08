@@ -1,101 +1,40 @@
-import { redirect } from 'next/navigation';
-import { createServerSupabaseClient } from '@/lib/supabase-server';
+import { requireAdminAuth } from '@/lib/auth/admin-guard';
 import { createAdminClient } from '@/lib/supabase';
 import HotelDashboardClient from '@/components/admin/HotelDashboardClient';
-import { Tenant, Room, Booking } from '@/types';
+import { Room, Booking } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * Hotel Command Center Admin Dashboard (React Server Component)
  * 
- * Scoped to the authenticated resort administrator's tenant_id.
+ * Strictly isolated to the authenticated resort administrator's tenant_id.
  */
 export default async function AdminDashboardPage() {
-  const supabase = await createServerSupabaseClient();
-
-  // 1. Authenticate user
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect('/login?redirectTo=/dashboard');
-  }
-
-  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-  // 2. Resolve Profile & Tenant Context
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('tenant_id, role, full_name, mobile_number')
-    .eq('id', user.id)
-    .maybeSingle();
-
-  let tenantId = profile?.tenant_id && UUID_REGEX.test(profile.tenant_id) ? profile.tenant_id : undefined;
-  if (!tenantId) {
-    const envId = process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID;
-    if (envId && UUID_REGEX.test(envId)) {
-      tenantId = envId;
-    }
-  }
+  const auth = await requireAdminAuth('/dashboard');
   const adminDb = createAdminClient();
 
-  let tenant: Tenant | null = null;
-  if (tenantId) {
-    const { data: tenantData } = await adminDb
-      .from('tenants')
-      .select('*')
-      .eq('id', tenantId)
-      .maybeSingle();
-    tenant = (tenantData as unknown as Tenant) || null;
-  }
-
-  if (!tenant) {
-    const { data: anyTenants } = await adminDb
-      .from('tenants')
-      .select('*')
-      .eq('is_active', true)
-      .limit(1);
-
-    if (anyTenants && anyTenants.length > 0 && anyTenants[0]) {
-      const firstTenant = anyTenants[0] as unknown as Tenant;
-      tenant = firstTenant;
-      tenantId = firstTenant.id;
-    }
-  }
-
-  if (!tenantId) {
-    return (
-      <HotelDashboardClient
-        tenant={null}
-        initialRooms={[]}
-        initialBookings={[]}
-      />
-    );
-  }
-
-  // 3. Fetch Rooms
+  // 1. Fetch Rooms strictly for this authorized tenant
   const { data: rawRooms } = await adminDb
     .from('rooms')
     .select('*')
-    .eq('tenant_id', tenantId)
+    .eq('tenant_id', auth.tenantId!)
     .order('name', { ascending: true });
 
   const rooms: Room[] = (rawRooms || []) as Room[];
 
-  // 4. Fetch Bookings for live room occupancy & today's arrivals/departures
+  // 2. Fetch Bookings strictly for this authorized tenant
   const { data: rawBookings } = await adminDb
     .from('bookings')
     .select('*')
-    .eq('tenant_id', tenantId)
+    .eq('tenant_id', auth.tenantId!)
     .order('created_at', { ascending: false });
 
   const bookings: Booking[] = (rawBookings || []) as Booking[];
 
   return (
     <HotelDashboardClient
-      tenant={tenant}
+      tenant={auth.tenant}
       initialRooms={rooms}
       initialBookings={bookings}
     />

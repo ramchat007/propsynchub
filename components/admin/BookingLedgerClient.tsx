@@ -485,7 +485,7 @@ export default function BookingLedgerClient({ initialDetails }: BookingLedgerCli
               New Incidental Charge
             </h3>
 
-            <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {/* Item Name */}
               <div className="lg:col-span-2">
                 <label className="block text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
