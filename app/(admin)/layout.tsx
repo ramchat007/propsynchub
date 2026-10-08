@@ -1,4 +1,5 @@
 import React from 'react';
+import Link from 'next/link';
 import { createServerSupabaseClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase';
 import AdminSidebarNav from '@/components/admin/AdminSidebarNav';
@@ -100,18 +101,18 @@ export default async function AdminLayout({
             </p>
           </div>
           <div className="pt-2 space-y-2.5">
-            <a
+            <Link
               href={`/${resortSubdomain}`}
               className="block w-full rounded-xl bg-emerald-600 py-3 text-xs font-bold text-white shadow-xs hover:bg-emerald-500 transition"
             >
               Return to Resort Website
-            </a>
-            <a
+            </Link>
+            <Link
               href="/login"
               className="block w-full rounded-xl border border-stone-300 py-2.5 text-xs font-semibold text-stone-700 hover:bg-stone-50 transition dark:border-neutral-700 dark:text-stone-300 dark:hover:bg-neutral-800"
             >
               Sign In with Staff Account
-            </a>
+            </Link>
           </div>
         </div>
       </div>

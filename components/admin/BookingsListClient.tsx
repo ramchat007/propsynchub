@@ -7,7 +7,6 @@ import { Booking, Room, Tenant } from '@/types';
 import {
   updateBookingStatus,
   reassignBookingRoom,
-  seedSampleBookings,
   rescheduleBookingDates,
   cancelBooking,
 } from '@/app/actions/booking';
@@ -223,25 +222,6 @@ export default function BookingsListClient({
         router.refresh();
       } else {
         setNotification({ type: 'error', message: res.error || 'Failed to cancel reservation.' });
-      }
-    });
-  }
-
-  /**
-   * Seed demo data for testing
-   */
-  function handleSeedDemo() {
-    if (!tenant) return;
-    if (!confirm('Load 3 realistic demo reservations (In-House, Arriving Today, Upcoming) into the ledger?')) {
-      return;
-    }
-    startTransition(async () => {
-      const res = await seedSampleBookings(tenant.id);
-      if (res.success) {
-        setNotification({ type: 'success', message: res.message });
-        router.refresh();
-      } else {
-        setNotification({ type: 'error', message: res.message });
       }
     });
   }

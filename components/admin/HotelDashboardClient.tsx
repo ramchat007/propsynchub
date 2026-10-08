@@ -7,7 +7,6 @@ import { Tenant, Room, Booking, RoomStatus } from '@/types';
 import {
   createReservation,
   updateBookingStatus,
-  seedSampleBookings,
 } from '@/app/actions/booking';
 import { updateRoomStatus } from '@/app/actions/inventory';
 import { ToastContainer, ToastMessage } from './Toast';
@@ -332,22 +331,6 @@ export default function HotelDashboardClient({
       setWalkInSelectedRoomId(firstAvailable.id);
     }
     setIsWalkInModalOpen(true);
-  };
-
-  const handleSeedDemo = () => {
-    if (!tenantId) return;
-    if (!confirm('Load 3 realistic sample reservations (1 In-House, 1 Arriving Today, 1 Upcoming) to preview the front-desk command loop?')) {
-      return;
-    }
-    startTransition(async () => {
-      const res = await seedSampleBookings(tenantId);
-      if (res.success) {
-        addToast('success', res.message);
-        router.refresh();
-      } else {
-        addToast('error', res.message);
-      }
-    });
   };
 
   const handleSaveWalkInReservation = async (e: React.FormEvent) => {
