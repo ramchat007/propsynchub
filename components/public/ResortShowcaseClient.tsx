@@ -2,13 +2,16 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Tenant, Room, RoomCategory } from '@/types';
+import { useRouter } from 'next/navigation';
+import { Tenant, Room, RoomCategory, ResortActivity, ResortReview } from '@/types';
 
 interface ResortShowcaseClientProps {
   tenant: Tenant;
   rooms: Room[];
   categories: RoomCategory[];
   tenantParam: string;
+  activities?: ResortActivity[];
+  reviews?: ResortReview[];
 }
 
 interface ShowcaseSettings {
@@ -31,7 +34,13 @@ export default function ResortShowcaseClient({
   tenant,
   rooms,
   tenantParam,
+  activities = [],
+  reviews = [],
 }: ResortShowcaseClientProps) {
+  const router = useRouter();
+  const [showLookupModal, setShowLookupModal] = useState(false);
+  const [lookupBookingId, setLookupBookingId] = useState('');
+
   // Extract website settings with safe fallbacks
   const settings = (tenant.settings as unknown as ShowcaseSettings) || {};
   const primaryColor = settings.primary_color_hex || '#c0395b';
@@ -164,18 +173,21 @@ export default function ResortShowcaseClient({
           </Link>
 
           {/* Navigation Links */}
-          <nav className="hidden items-center gap-8 text-xs font-semibold tracking-wider text-stone-600 uppercase md:flex dark:text-stone-300">
+          <nav className="hidden items-center gap-7 text-xs font-semibold tracking-wider text-stone-600 uppercase md:flex dark:text-stone-300">
             <a href="#overview" className="transition hover:text-stone-950 dark:hover:text-white">
               Overview
             </a>
             <a href="#villas" className="transition hover:text-stone-950 dark:hover:text-white">
-              Villas &amp; Rooms
+              Villas
             </a>
             <a href="#amenities" className="transition hover:text-stone-950 dark:hover:text-white">
-              Experience
+              Amenities
             </a>
-            <a href="#gallery" className="transition hover:text-stone-950 dark:hover:text-white">
-              Gallery
+            <a href="#experiences" className="transition hover:text-stone-950 dark:hover:text-white">
+              Experiences
+            </a>
+            <a href="#reviews" className="transition hover:text-stone-950 dark:hover:text-white">
+              Reviews
             </a>
             <a href="#contact" className="transition hover:text-stone-950 dark:hover:text-white">
               Contact
@@ -184,6 +196,12 @@ export default function ResortShowcaseClient({
 
           {/* Action CTA */}
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowLookupModal(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-stone-200 dark:border-neutral-700 bg-stone-50 dark:bg-neutral-800 px-3.5 py-2 text-xs font-bold text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-neutral-750 transition"
+            >
+              <span>🔑 Guest Portal</span>
+            </button>
             <Link
               href={bookingUrl}
               style={{ backgroundColor: primaryColor }}
@@ -566,6 +584,99 @@ export default function ResortShowcaseClient({
       )}
 
       {/* =================================================================== */}
+      {/* EXPERIENCES & RESORT ACTIVITIES */}
+      {/* =================================================================== */}
+      {activities.length > 0 && (
+        <section id="experiences" className="border-t border-stone-200/80 bg-stone-100/60 py-20 dark:border-neutral-800 dark:bg-neutral-900/40">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="text-center">
+              <span style={{ color: primaryColor }} className="text-xs font-bold tracking-widest uppercase">
+                Curated Adventures
+              </span>
+              <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-stone-900 sm:text-4xl dark:text-white">
+                Resort Experiences &amp; Activities
+              </h2>
+              <p className="mx-auto mt-2 max-w-xl text-xs text-stone-500 sm:text-sm">
+                Immerse yourself in authentic coastal excursions, wellness therapies, and starlit gatherings.
+              </p>
+            </div>
+
+            <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {activities.map((act) => (
+                <div
+                  key={act.id}
+                  className="rounded-3xl border border-stone-200/80 bg-white p-6 shadow-xs dark:border-neutral-800 dark:bg-neutral-900 flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-start justify-between">
+                      <h3 className="text-lg font-black text-stone-900 dark:text-white">{act.title}</h3>
+                      <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">
+                        ₹{act.price_inr}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs text-stone-600 dark:text-stone-300 leading-relaxed">{act.description}</p>
+                  </div>
+                  <div className="mt-6 pt-4 border-t border-stone-100 dark:border-neutral-800 flex justify-between items-center text-xs text-stone-500">
+                    <span>⏱️ {act.duration_minutes} Mins</span>
+                    <Link
+                      href={bookingUrl}
+                      className="font-bold text-emerald-700 hover:underline"
+                    >
+                      Book with Stay ➔
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* =================================================================== */}
+      {/* VERIFIED GUEST REVIEWS */}
+      {/* =================================================================== */}
+      {reviews.length > 0 && (
+        <section id="reviews" className="border-t border-stone-200/80 bg-white py-20 dark:border-neutral-800 dark:bg-neutral-900">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="text-center">
+              <span style={{ color: primaryColor }} className="text-xs font-bold tracking-widest uppercase">
+                Guest Hospitality
+              </span>
+              <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-stone-900 sm:text-4xl dark:text-white">
+                Verified Guest Reviews
+              </h2>
+              <p className="mx-auto mt-2 max-w-xl text-xs text-stone-500 sm:text-sm">
+                Authentic testimonials from guests who experienced {tenant.name}.
+              </p>
+            </div>
+
+            <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {reviews.map((rev) => (
+                <div
+                  key={rev.id}
+                  className="rounded-3xl border border-stone-200/80 bg-stone-50/60 p-6 shadow-xs dark:border-neutral-800 dark:bg-neutral-850 flex flex-col justify-between"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-1 text-amber-500 text-sm">
+                      {'★'.repeat(rev.rating)}
+                      {'☆'.repeat(5 - rev.rating)}
+                    </div>
+                    <p className="text-xs text-stone-700 dark:text-stone-300 leading-relaxed italic">
+                      &ldquo;{rev.comment}&rdquo;
+                    </p>
+                  </div>
+                  <div className="mt-6 pt-4 border-t border-stone-200/60 dark:border-neutral-800 flex items-center justify-between text-xs">
+                    <span className="font-bold text-stone-900 dark:text-white">{rev.guest_name}</span>
+                    <span className="text-[10px] text-stone-400">Verified Stay</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* =================================================================== */}
       {/* 6. LOCATION, MAP & DIRECT WHATSAPP CONTACT */}
       {/* =================================================================== */}
       <section id="contact" className="border-t border-stone-200/80 bg-white py-20 dark:border-neutral-800 dark:bg-neutral-900">
@@ -713,6 +824,54 @@ export default function ResortShowcaseClient({
           </Link>
         </div>
       </div>
+
+      {/* BOOKING LOOKUP / GUEST PORTAL MODAL */}
+      {showLookupModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-neutral-900 p-6 shadow-2xl border border-stone-200 dark:border-neutral-800 space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-base font-black text-stone-900 dark:text-white">Access Guest Portal</h3>
+              <button
+                onClick={() => setShowLookupModal(false)}
+                className="text-stone-400 hover:text-stone-900 dark:hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-xs text-stone-500">
+              Enter your official Booking Reference ID to view stay details, settle outstanding balances, order in-room food, and request room services.
+            </p>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (lookupBookingId.trim()) {
+                  router.push(`/${tenantParam}/portal/${lookupBookingId.trim()}`);
+                }
+              }}
+              className="space-y-3 text-xs"
+            >
+              <div>
+                <label className="block text-stone-500 font-semibold mb-1">Booking Reference or ID</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. 2f002373-... or ref code"
+                  value={lookupBookingId}
+                  onChange={(e) => setLookupBookingId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 dark:border-neutral-800 bg-stone-50 dark:bg-neutral-800 text-stone-900 dark:text-white font-mono"
+                />
+              </div>
+              <button
+                type="submit"
+                style={{ backgroundColor: primaryColor }}
+                className="w-full py-3 rounded-xl text-xs font-bold text-white shadow-md transition hover:brightness-110"
+              >
+                Open My Guest Portal →
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

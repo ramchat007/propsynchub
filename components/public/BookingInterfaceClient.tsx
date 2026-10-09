@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useTransition, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Tenant } from '@/types';
+import { Tenant, MealPlanCode } from '@/types';
+import { getAvailableMealPlans, calculateMealPlanCost } from '@/lib/meal-plans';
 import {
   checkRoomAvailability,
   createReservation,
@@ -83,6 +84,13 @@ export default function BookingInterfaceClient({
   const [guestEmail, setGuestEmail] = useState(initialUser?.email || '');
   const [specialRequests, setSpecialRequests] = useState('');
 
+  // 3b. Phase 1 Meal Plan & Corporate GST Invoicing State
+  const [selectedMealPlanCode, setSelectedMealPlanCode] = useState<MealPlanCode>('EP');
+  const [needCorporateGstin, setNeedCorporateGstin] = useState(false);
+  const [companyName, setCompanyName] = useState('');
+  const [guestGstin, setGuestGstin] = useState('');
+  const [billingAddress, setBillingAddress] = useState('');
+
   // 4. Inline Email OTP Verification State (Optional frictionless step inside drawer)
   const [otpSent, setOtpSent] = useState(false);
   const [otpInput, setOtpInput] = useState('');
@@ -116,6 +124,22 @@ export default function BookingInterfaceClient({
   const [callbackName, setCallbackName] = useState(initialUser?.fullName || '');
   const [callbackMobile, setCallbackMobile] = useState(initialUser?.phone || '');
   const [isCallbackPending, startCallbackTransition] = useTransition();
+
+  // Phase 1: Authoritative Meal Plan Supplement & Dynamic Grand Total
+  const availableMealPlans = getAvailableMealPlans(
+    selectedRoom?.category,
+    tenant.settings as Record<string, unknown>
+  );
+  const currentMealPlanCost = calculateMealPlanCost(
+    selectedMealPlanCode,
+    adults,
+    children,
+    selectedRoom ? selectedRoom.nights : nights,
+    availableMealPlans
+  );
+  const computedGrandTotal = selectedRoom
+    ? selectedRoom.grandTotal + currentMealPlanCost.total_plan_charge_inr
+    : 0;
 
   /**
    * Run availability query
@@ -293,11 +317,11 @@ export default function BookingInterfaceClient({
 
     setCheckoutError(null);
     startBookingTransition(async () => {
-      const advanceAmount = Math.round(selectedRoom.grandTotal * 0.5);
+      const advanceAmount = Math.round(computedGrandTotal * 0.5);
       const amountToCharge =
         paymentPolicyChoice === 'ADVANCE'
           ? advanceAmount
-          : selectedRoom.grandTotal;
+          : computedGrandTotal;
 
       const res = await createReservation({
         tenantId: tenant.id,
@@ -310,15 +334,20 @@ export default function BookingInterfaceClient({
         guestName: guestName.trim(),
         guestMobile: guestMobile.trim(),
         guestEmail: guestEmail.trim(),
-        totalAmount: selectedRoom.grandTotal,
+        totalAmount: computedGrandTotal,
         paymentPolicy: paymentPolicyChoice,
         paidAmount:
           paymentPolicyChoice === 'FULL_PAYMENT'
-            ? selectedRoom.grandTotal
+            ? computedGrandTotal
             : paymentPolicyChoice === 'ADVANCE'
             ? advanceAmount
             : 0,
         specialRequests: specialRequests.trim(),
+        mealPlanCode: selectedMealPlanCode,
+        mealPlanChargeInr: currentMealPlanCost.total_plan_charge_inr,
+        guestGstin: needCorporateGstin ? guestGstin.trim().toUpperCase() : undefined,
+        companyName: needCorporateGstin ? companyName.trim() : undefined,
+        billingAddress: needCorporateGstin ? billingAddress.trim() : undefined,
       });
 
       if (!res.success || !res.booking) {
@@ -1059,13 +1088,83 @@ export default function BookingInterfaceClient({
                   <span>Guest Party:</span>
                   <span className="font-semibold">{adults} Adults, {children} Children</span>
                 </div>
+                <div className="flex justify-between text-stone-600 dark:text-stone-300">
+                  <span>Room Stay (SAC 996311):</span>
+                  <span className="font-semibold">₹{selectedRoom.grandTotal.toLocaleString()}</span>
+                </div>
+                {currentMealPlanCost.total_plan_charge_inr > 0 && (
+                  <div className="flex justify-between text-emerald-700 dark:text-emerald-400 font-medium">
+                    <span>Meal Plan ({currentMealPlanCost.code} - {currentMealPlanCost.name}):</span>
+                    <span className="font-bold">+₹{currentMealPlanCost.total_plan_charge_inr.toLocaleString()}</span>
+                  </div>
+                )}
                 <div className="border-t border-stone-200 pt-2 dark:border-neutral-700 flex justify-between text-base font-black">
                   <span>Grand Total</span>
-                  <span className="text-emerald-600 dark:text-emerald-400">₹{selectedRoom.grandTotal.toLocaleString()}</span>
+                  <span className="text-emerald-600 dark:text-emerald-400">₹{computedGrandTotal.toLocaleString()}</span>
                 </div>
                 <p className="text-[10px] text-stone-400">
-                  Taxes and service charges included · No hidden fees
+                  GST &amp; service charges included · Official tax invoice generated on booking
                 </p>
+              </div>
+
+              {/* Meal Plan Options */}
+              <div className="mt-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-stone-700 dark:text-neutral-300">
+                    Select Meal Plan (Dining &amp; F&amp;B SAC 996331)
+                  </label>
+                  <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                    Resort Kitchen
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {availableMealPlans
+                    .filter((p) => p.is_available !== false)
+                    .map((plan) => {
+                      const isSelected = selectedMealPlanCode === plan.code;
+                      const planCost = calculateMealPlanCost(
+                        plan.code,
+                        adults,
+                        children,
+                        selectedRoom.nights,
+                        availableMealPlans
+                      );
+                      return (
+                        <div
+                          key={plan.code}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setSelectedMealPlanCode(plan.code)}
+                          className={`cursor-pointer rounded-xl border p-2.5 text-left transition select-none ${
+                            isSelected
+                              ? 'border-emerald-600 bg-emerald-50/70 ring-1 ring-emerald-500/30 dark:border-emerald-500 dark:bg-emerald-950/40'
+                              : 'border-stone-200 bg-white hover:bg-stone-50 dark:border-neutral-700 dark:bg-neutral-800'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-black uppercase text-stone-700 dark:text-stone-300">
+                              {plan.code} · {plan.short_label}
+                            </span>
+                            {isSelected && <span className="text-xs font-bold text-emerald-600">✓</span>}
+                          </div>
+                          <div className="mt-1 text-xs font-bold text-stone-900 dark:text-white">
+                            {planCost.total_plan_charge_inr === 0
+                              ? 'Included'
+                              : `+₹${planCost.total_plan_charge_inr.toLocaleString()}`}
+                          </div>
+                          <p className="mt-0.5 text-[9px] text-stone-400 leading-tight">
+                            {plan.code === 'EP'
+                              ? 'Room accommodation only'
+                              : plan.code === 'CP'
+                              ? 'Breakfast included daily'
+                              : plan.code === 'MAP'
+                              ? 'Breakfast + Dinner included'
+                              : 'All meals included (Breakfast, Lunch, Dinner)'}
+                          </p>
+                        </div>
+                      );
+                    })}
+                </div>
               </div>
 
               {checkoutError && (
@@ -1136,6 +1235,64 @@ export default function BookingInterfaceClient({
                   <p className="mt-1 text-[10px] text-stone-400">
                     Instant confirmation voucher and Guest Portal folio dispatched here
                   </p>
+                </div>
+
+                {/* Corporate / B2B GST Tax Invoicing Section */}
+                <div className="pt-2 border-t border-stone-100 dark:border-neutral-800">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-stone-700 dark:text-neutral-300 select-none">
+                    <input
+                      type="checkbox"
+                      checked={needCorporateGstin}
+                      onChange={(e) => setNeedCorporateGstin(e.target.checked)}
+                      className="rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span>💼 Need GST Tax Invoice for Business / Corporate Tax Credit (B2B)?</span>
+                  </label>
+
+                  {needCorporateGstin && (
+                    <div className="mt-3 space-y-3 rounded-xl border border-stone-200 bg-stone-50/70 p-3.5 dark:border-neutral-800 dark:bg-neutral-850 animate-in fade-in">
+                      <div>
+                        <label className="block text-[11px] font-bold text-stone-700 dark:text-neutral-300">
+                          Company / Organization Legal Name *
+                        </label>
+                        <input
+                          type="text"
+                          required={needCorporateGstin}
+                          value={companyName}
+                          onChange={(e) => setCompanyName(e.target.value)}
+                          placeholder="e.g. Reliance Industries Limited"
+                          className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-stone-700 dark:text-neutral-300">
+                          Company GSTIN (15 Digits) *
+                        </label>
+                        <input
+                          type="text"
+                          required={needCorporateGstin}
+                          maxLength={15}
+                          value={guestGstin}
+                          onChange={(e) => setGuestGstin(e.target.value.toUpperCase())}
+                          placeholder="e.g. 27AAACR1234F1Z5"
+                          className="mt-1 w-full font-mono uppercase font-bold rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                        />
+                        <span className="text-[10px] text-stone-400">Used for official GSTR-1 filing &amp; tax invoice.</span>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-stone-700 dark:text-neutral-300">
+                          Registered Office Billing Address
+                        </label>
+                        <input
+                          type="text"
+                          value={billingAddress}
+                          onChange={(e) => setBillingAddress(e.target.value)}
+                          placeholder="e.g. Maker Chambers IV, Nariman Point, Mumbai 400021"
+                          className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Inline OTP Section if requested */}
@@ -1214,7 +1371,7 @@ export default function BookingInterfaceClient({
                         )}
                       </div>
                       <div className="mt-1 text-sm font-black text-stone-900 dark:text-white">
-                        ₹{selectedRoom.grandTotal.toLocaleString()}
+                        ₹{computedGrandTotal.toLocaleString()}
                       </div>
                       <p className="mt-0.5 text-[10px] text-stone-500 dark:text-stone-400">
                         Zero due at check-in
@@ -1239,7 +1396,7 @@ export default function BookingInterfaceClient({
                         )}
                       </div>
                       <div className="mt-1 text-sm font-black text-stone-900 dark:text-white">
-                        ₹{Math.round(selectedRoom.grandTotal * 0.5).toLocaleString()}
+                        ₹{Math.round(computedGrandTotal * 0.5).toLocaleString()}
                       </div>
                       <p className="mt-0.5 text-[10px] text-stone-500 dark:text-stone-400">
                         Remaining at check-in

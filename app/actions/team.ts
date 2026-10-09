@@ -63,15 +63,27 @@ export async function getResortTeamMembers(
       }
     });
 
+    // Fetch tenant settings to retrieve specialized staff roles
+    const { data: tenant } = await adminDb
+      .from('tenants')
+      .select('settings')
+      .eq('id', tenantId)
+      .maybeSingle();
+
+    const settings = (tenant?.settings as Record<string, unknown>) || {};
+    const staffRoles = (settings.staff_roles as Record<string, UserRole>) || {};
+
     const teamMembers: TeamMember[] = (profiles || []).map((p) => {
       const email = userEmailMap.get(p.id) || (p.mobile_number ? `${p.mobile_number}@phone` : 'unknown');
+      const specializedRole = staffRoles[p.id] || (p.role as UserRole);
+
       return {
         id: p.id,
         tenant_id: p.tenant_id,
         email,
         full_name: p.full_name || email.split('@')[0],
         mobile_number: p.mobile_number,
-        role: p.role as UserRole,
+        role: specializedRole,
         avatar_url: p.avatar_url,
         created_at: p.created_at,
         updated_at: p.updated_at,
@@ -111,8 +123,18 @@ export async function inviteTeamMember(
       return { success: false, error: 'Please enter a valid email address.' };
     }
 
-    if (role !== 'staff' && role !== 'tenant_admin') {
-      return { success: false, error: 'Role must be either Front Desk Staff or Resort Administrator.' };
+    const validRoles: UserRole[] = [
+      'tenant_admin',
+      'resort_manager',
+      'front_desk',
+      'housekeeping',
+      'restaurant_staff',
+      'accountant',
+      'staff',
+    ];
+
+    if (!validRoles.includes(role)) {
+      return { success: false, error: 'Invalid role selection.' };
     }
 
     const supabase = await createServerSupabaseClient();
@@ -191,19 +213,20 @@ export async function inviteTeamMember(
       if (existingTargetProfile?.tenant_id === tenantId && existingTargetProfile.role === role) {
         return {
           success: false,
-          error: `User "${rawEmail}" is already an active ${role === 'tenant_admin' ? 'Administrator' : 'Staff member'} for this resort.`,
+          error: `User "${rawEmail}" is already an active member for this resort.`,
         };
       }
     }
 
     // 3. Upsert profile with assigned role and resort tenant_id
+    const dbRole = role === 'tenant_admin' ? 'tenant_admin' : 'staff';
     const { error: profileUpsertError } = await adminDb.from('profiles').upsert(
       {
         id: targetUserId,
         tenant_id: tenantId,
         full_name: fullName || rawEmail.split('@')[0],
         mobile_number: mobileNumber || '+919999999999',
-        role,
+        role: dbRole,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'id' }
@@ -213,26 +236,31 @@ export async function inviteTeamMember(
       throw new Error(profileUpsertError.message);
     }
 
-    // 4. Update tenant settings admin_emails if administrator
-    if (role === 'tenant_admin') {
-      const currentSettings = (tenant?.settings as Record<string, unknown>) || {};
-      const currentAdminEmails = Array.isArray(currentSettings.admin_emails)
-        ? (currentSettings.admin_emails as string[])
-        : [];
+    // 4. Update tenant settings with specialized staff_roles and admin_emails
+    const currentSettings = (tenant?.settings as Record<string, unknown>) || {};
+    const currentStaffRoles = { ...((currentSettings.staff_roles as Record<string, string>) || {}) };
+    currentStaffRoles[targetUserId] = role;
 
-      if (!currentAdminEmails.includes(rawEmail)) {
-        await adminDb
-          .from('tenants')
-          .update({
-            settings: {
-              ...currentSettings,
-              admin_emails: [...currentAdminEmails, rawEmail],
-            },
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', tenantId);
-      }
-    }
+    const currentAdminEmails = Array.isArray(currentSettings.admin_emails)
+      ? (currentSettings.admin_emails as string[])
+      : [];
+
+    const updatedAdminEmails =
+      role === 'tenant_admin' && !currentAdminEmails.includes(rawEmail)
+        ? [...currentAdminEmails, rawEmail]
+        : currentAdminEmails;
+
+    await adminDb
+      .from('tenants')
+      .update({
+        settings: {
+          ...currentSettings,
+          staff_roles: currentStaffRoles,
+          admin_emails: updatedAdminEmails,
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', tenantId);
 
     // 5. Send invite email notification
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://propsynchub.netlify.app';
@@ -296,7 +324,17 @@ export async function updateTeamMemberRole(
       return { success: false, error: 'Missing required parameters.' };
     }
 
-    if (newRole !== 'staff' && newRole !== 'tenant_admin') {
+    const validRoles: UserRole[] = [
+      'tenant_admin',
+      'resort_manager',
+      'front_desk',
+      'housekeeping',
+      'restaurant_staff',
+      'accountant',
+      'staff',
+    ];
+
+    if (!validRoles.includes(newRole)) {
       return { success: false, error: 'Invalid role selection.' };
     }
 
@@ -342,10 +380,11 @@ export async function updateTeamMemberRole(
     }
 
     // Update role
+    const dbRole = newRole === 'tenant_admin' ? 'tenant_admin' : 'staff';
     const { error: updateError } = await adminDb
       .from('profiles')
       .update({
-        role: newRole,
+        role: dbRole,
         updated_at: new Date().toISOString(),
       })
       .eq('id', memberId);
@@ -353,6 +392,25 @@ export async function updateTeamMemberRole(
     if (updateError) {
       throw updateError;
     }
+
+    // Update staff_roles mapping in tenant settings
+    const { data: tenant } = await adminDb
+      .from('tenants')
+      .select('settings')
+      .eq('id', tenantId)
+      .single();
+
+    const settings = (tenant?.settings as Record<string, unknown>) || {};
+    const staffRoles = { ...((settings.staff_roles as Record<string, string>) || {}) };
+    staffRoles[memberId] = newRole;
+
+    await adminDb
+      .from('tenants')
+      .update({
+        settings: { ...settings, staff_roles: staffRoles },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', tenantId);
 
     // Audit log
     try {

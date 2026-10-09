@@ -5,13 +5,19 @@ import { NextResponse, type NextRequest } from 'next/server';
  * PropSyncHub Edge Middleware
  * 
  * Handles:
- * 1. Multi-Tenant Routing: Extracts tenant from Subdomain or Custom Domain.
- * 2. URL Rewriting: Rewrites tenant traffic seamlessly to /app/(public)/[tenantId]/*
- * 3. Auth Guard: Protects /admin and /dashboard routes via Supabase Auth session checks.
+ * 1. Root Apex Routing: propsynchub.in marketing, exclusive /admin-master portal, clean /admin redirects.
+ * 2. Development Preview: /r/[tenantSlug] preview routes without custom domains.
+ * 3. Resort Custom Domains:
+ *    - Branded Public Website & Booking: raigadtropical.in -> /[tenantId]
+ *    - Resort Management Portal: raigadtropical.in/app/* -> /(admin)/*
+ * 4. Subdomains: resort.propsynchub.in routing.
+ * 5. Server-Side Auth Guard: Supabase Session Verification.
  */
 
-// Root apex domains that represent the main PropSyncHub platform
+// Root platform apex domains
 const ROOT_DOMAINS = [
+  'propsynchub.in',
+  'www.propsynchub.in',
   'propsynchub.com',
   'www.propsynchub.com',
   'localhost',
@@ -20,17 +26,16 @@ const ROOT_DOMAINS = [
 ].filter(Boolean) as string[];
 
 /**
- * Extracts the tenant identifier and domain classification from the request Host header.
+ * Extracts tenant identifier, domain classification, and apex status from Host header.
  */
-function resolveTenant(host: string): {
+function resolveHostInfo(host: string): {
   tenantId: string | null;
   isCustomDomain: boolean;
   isApex: boolean;
+  normalizedHost: string;
 } {
-  // Strip port from host header (e.g., localhost:3000 -> localhost)
   const hostname = (host || '').split(':')[0].toLowerCase();
 
-  // 1. Apex / Main platform check (Localhost, PropSyncHub root, Netlify deploy URLs, Vercel URLs)
   let appUrlHost = '';
   if (process.env.NEXT_PUBLIC_APP_URL) {
     try {
@@ -40,6 +45,7 @@ function resolveTenant(host: string): {
     }
   }
 
+  // 1. Apex / Main platform check
   if (
     ROOT_DOMAINS.includes(hostname) ||
     hostname === 'www.localhost' ||
@@ -47,56 +53,54 @@ function resolveTenant(host: string): {
     hostname.includes('vercel.app') ||
     (appUrlHost && hostname === appUrlHost)
   ) {
-    return { tenantId: null, isCustomDomain: false, isApex: true };
+    return { tenantId: null, isCustomDomain: false, isApex: true, normalizedHost: hostname };
   }
 
-  const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN?.toLowerCase() || 'propsynchub.com';
+  const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN?.toLowerCase() || 'propsynchub.in';
 
-  // 2. Production Subdomain check (e.g., resort-a.propsynchub.com)
-  if (hostname.endsWith(`.${rootDomain}`)) {
-    const subdomain = hostname.replace(`.${rootDomain}`, '').trim();
+  // 2. Production Subdomain check (e.g. raigad-tropical.propsynchub.in or .com)
+  if (hostname.endsWith(`.${rootDomain}`) || hostname.endsWith('.propsynchub.com')) {
+    const subdomain = hostname
+      .replace(`.${rootDomain}`, '')
+      .replace('.propsynchub.com', '')
+      .trim();
     if (subdomain && subdomain !== 'www') {
-      return { tenantId: subdomain, isCustomDomain: false, isApex: false };
+      return { tenantId: subdomain, isCustomDomain: false, isApex: false, normalizedHost: hostname };
     }
-    return { tenantId: null, isCustomDomain: false, isApex: true };
+    return { tenantId: null, isCustomDomain: false, isApex: true, normalizedHost: hostname };
   }
 
-  // 3. Local Development Subdomain check (e.g., resort-a.localhost)
+  // 3. Local Development Subdomain check (e.g., raigad-tropical.localhost)
   if (hostname.endsWith('.localhost')) {
     const subdomain = hostname.replace('.localhost', '').trim();
     if (subdomain && subdomain !== 'www') {
-      return { tenantId: subdomain, isCustomDomain: false, isApex: false };
+      return { tenantId: subdomain, isCustomDomain: false, isApex: false, normalizedHost: hostname };
     }
-    return { tenantId: null, isCustomDomain: false, isApex: true };
+    return { tenantId: null, isCustomDomain: false, isApex: true, normalizedHost: hostname };
   }
 
-  // 4. Custom Domain check (e.g., firstresort.com, www.firstresort.com)
+  // 4. Custom Domain check (e.g., raigadtropical.in, www.raigadtropical.in)
   const customDomain = hostname.startsWith('www.') ? hostname.slice(4) : hostname;
-  return { tenantId: customDomain, isCustomDomain: true, isApex: false };
+  return { tenantId: customDomain, isCustomDomain: true, isApex: false, normalizedHost: customDomain };
 }
 
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const host = request.headers.get('host') || '';
 
-  // Determine if this is an administrative or platform route requiring authentication
-  const isAdminRoute =
-    pathname.startsWith('/admin') ||
-    pathname.startsWith('/dashboard') ||
-    pathname.startsWith('/bookings') ||
-    pathname.startsWith('/calendar') ||
-    pathname.startsWith('/inventory') ||
-    pathname.startsWith('/reports') ||
-    pathname.startsWith('/audit-logs') ||
-    pathname.startsWith('/settings');
-  const isLoginRoute = pathname === '/login' || pathname === '/auth/login';
-  const isAuthRoute = pathname.startsWith('/auth');
-  const isOnboardingRoute = pathname === '/onboarding' || pathname.startsWith('/onboarding');
+  // Classify Host
+  const { tenantId, isCustomDomain, isApex, normalizedHost } = resolveHostInfo(host);
 
-  // Prepare mutable request headers for forwarding tenant context downstream
+  // Prepare mutable headers
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-forwarded-host', host);
   requestHeaders.set('x-pathname', pathname);
+  requestHeaders.set('x-normalized-host', normalizedHost);
+
+  if (tenantId) {
+    requestHeaders.set('x-tenant-id', tenantId);
+    requestHeaders.set('x-tenant-type', isCustomDomain ? 'custom_domain' : 'subdomain');
+  }
 
   let response = NextResponse.next({
     request: {
@@ -104,10 +108,15 @@ export async function middleware(request: NextRequest) {
     },
   });
 
+  // Server Actions handle their own auth; preserve RSC action stream
+  const isServerAction = request.headers.has('next-action');
+  if (isServerAction) {
+    return response;
+  }
+
   // ---------------------------------------------------------------------------
-  // TASK 1: AUTH GUARD (Supabase Session Verification)
+  // 1. SUPABASE SSR CLIENT INITIALIZATION
   // ---------------------------------------------------------------------------
-  // Initialize Supabase SSR client to inspect session cookies
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://qqxctovvqrwllyanwglh.supabase.co',
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxeGN0b3Z2cXJ3bGx5YW53Z2xoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTExOTc2NTIsImV4cCI6MjEwNjc3MzY1Mn0.rM0IxipDbqhbaYjRoJ95Z6tAfJEbz2YsMnfN9s1-oRY',
@@ -131,13 +140,144 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Server Actions handle their own auth; bypass middleware redirect to preserve RSC action stream
-  const isServerAction = request.headers.has('next-action');
-  if (isServerAction) {
+  // ---------------------------------------------------------------------------
+  // 2. DEV PREVIEW REWRITE: /r/[tenantSlug] on Apex or Localhost
+  // ---------------------------------------------------------------------------
+  if (pathname.startsWith('/r/')) {
+    const segments = pathname.replace(/^\/r\//, '').split('/');
+    const previewSlug = segments[0];
+    const previewSubpath = segments.slice(1).join('/');
+
+    if (previewSlug) {
+      requestHeaders.set('x-tenant-id', previewSlug);
+      requestHeaders.set('x-tenant-type', 'preview');
+
+      const targetPath = `/${previewSlug}${previewSubpath ? `/${previewSubpath}` : ''}${search}`;
+      const rewriteUrl = new URL(targetPath, request.url);
+      return NextResponse.rewrite(rewriteUrl, {
+        request: {
+          headers: requestHeaders,
+        },
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 3. /admin REDIRECTION GUARD ON APEX
+  // Do not create a conflicting second platform-admin portal at /admin.
+  // ---------------------------------------------------------------------------
+  if (pathname === '/admin' || pathname === '/admin/') {
+    try {
+      const { data } = await supabase.auth.getUser();
+      const user = data.user;
+      if (user && user.email?.toLowerCase() === 'ramchat007@gmail.com') {
+        return NextResponse.redirect(new URL('/admin-master', request.url));
+      } else if (user) {
+        return NextResponse.redirect(new URL('/dashboard', request.url));
+      } else {
+        return NextResponse.redirect(new URL('/login?redirectTo=/admin-master', request.url));
+      }
+    } catch {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+  }
+
+  // /platform URL should cleanly redirect to /admin-master
+  if (pathname === '/platform' || pathname === '/platform/') {
+    return NextResponse.redirect(new URL('/admin-master', request.url));
+  }
+
+  // ---------------------------------------------------------------------------
+  // 4. /admin-master ACCESS GUARD
+  // Platform superadmin entrance: forbidden on resort custom domains, strictly guarded on apex
+  // ---------------------------------------------------------------------------
+  if (pathname.startsWith('/admin-master')) {
+    if (!isApex) {
+      // Disallow accessing /admin-master from a resort's custom domain
+      const apexRoot = process.env.NEXT_PUBLIC_APP_URL || 'https://propsynchub.in';
+      return NextResponse.redirect(new URL('/admin-master', apexRoot));
+    }
+
+    // Inspect user session
+    let user = null;
+    try {
+      const { data } = await supabase.auth.getUser();
+      user = data.user;
+    } catch {
+      user = null;
+    }
+
+    if (!user) {
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.search = `?redirectTo=${encodeURIComponent(pathname + search)}`;
+      return NextResponse.redirect(loginUrl);
+    }
+
+    // Pass through to Server Component for authoritative SUPER_ADMIN role verification
     return response;
   }
 
-  // Check auth session for protected routes, onboarding, or login page
+  // ---------------------------------------------------------------------------
+  // 5. RESORT CUSTOM DOMAIN & SUBDOMAIN MANAGEMENT ROUTING (/app and /app/*)
+  // e.g. https://raigadtropical.in/app -> Resort management dashboard
+  // ---------------------------------------------------------------------------
+  if (!isApex && (pathname === '/app' || pathname.startsWith('/app/'))) {
+    // Determine internal target admin route
+    let internalPath = '/dashboard';
+    if (pathname === '/app' || pathname === '/app/') {
+      internalPath = '/dashboard';
+    } else if (pathname === '/app/login') {
+      internalPath = '/login';
+    } else {
+      // e.g. /app/bookings -> /bookings, /app/settings/website -> /settings/website
+      internalPath = pathname.replace(/^\/app/, '');
+    }
+
+    // Authenticate session for admin routes
+    let user = null;
+    try {
+      const { data } = await supabase.auth.getUser();
+      user = data.user;
+    } catch {
+      user = null;
+    }
+
+    if (!user && internalPath !== '/login') {
+      const loginUrl = new URL('/app/login', request.url);
+      loginUrl.search = `?redirectTo=${encodeURIComponent(pathname + search)}`;
+      return NextResponse.redirect(loginUrl);
+    }
+
+    requestHeaders.set('x-app-portal', 'true');
+    const rewriteUrl = new URL(`${internalPath}${search}`, request.url);
+    return NextResponse.rewrite(rewriteUrl, {
+      request: {
+        headers: requestHeaders,
+      },
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // 6. GENERAL AUTH GUARD FOR APEX ADMIN ROUTES
+  // ---------------------------------------------------------------------------
+  const isAdminRoute =
+    pathname.startsWith('/dashboard') ||
+    pathname.startsWith('/bookings') ||
+    pathname.startsWith('/calendar') ||
+    pathname.startsWith('/inventory') ||
+    pathname.startsWith('/housekeeping') ||
+    pathname.startsWith('/restaurant') ||
+    pathname.startsWith('/guest-services') ||
+    pathname.startsWith('/activities') ||
+    pathname.startsWith('/reviews') ||
+    pathname.startsWith('/reports') ||
+    pathname.startsWith('/audit-logs') ||
+    pathname.startsWith('/settings');
+
+  const isLoginRoute = pathname === '/login' || pathname === '/auth/login';
+  const isAuthRoute = pathname.startsWith('/auth');
+  const isOnboardingRoute = pathname === '/onboarding' || pathname.startsWith('/onboarding');
+
   let user = null;
   if (isAdminRoute || isLoginRoute || isOnboardingRoute) {
     try {
@@ -148,66 +288,51 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Unauthorized access to admin routes
   if (isAdminRoute && !user) {
     const isRscRequest = request.headers.has('rsc') || request.nextUrl.searchParams.has('_rsc');
-    // If it's an RSC prefetch/navigation, let the Server Component guard handle native redirect digest
     if (isRscRequest) {
       return response;
     }
-
     const loginUrl = new URL('/login', request.url);
     loginUrl.search = `?redirectTo=${encodeURIComponent(pathname + search)}`;
     return NextResponse.redirect(loginUrl);
   }
 
-  // Unauthorized access to onboarding -> Redirect to login page
   if (isOnboardingRoute && !user) {
     const isRscRequest = request.headers.has('rsc') || request.nextUrl.searchParams.has('_rsc');
     if (isRscRequest) {
       return response;
     }
-
     const loginUrl = new URL('/login', request.url);
     loginUrl.search = `?callbackUrl=${encodeURIComponent(pathname + search)}`;
     return NextResponse.redirect(loginUrl);
   }
 
-  // Already authenticated user visiting login page -> Redirect to admin dashboard
   if (isLoginRoute && user) {
-    const dashboardUrl = new URL('/dashboard', request.url);
-    return NextResponse.redirect(dashboardUrl);
+    // If user is superadmin, redirect to /admin-master, else /dashboard
+    const isSuper = user.email?.toLowerCase() === 'ramchat007@gmail.com';
+    const destination = isSuper ? '/admin-master' : '/dashboard';
+    return NextResponse.redirect(new URL(destination, request.url));
   }
 
-  // ---------------------------------------------------------------------------
-  // TASK 2: MULTI-TENANT RESOLUTION
-  // ---------------------------------------------------------------------------
-  const { tenantId, isCustomDomain, isApex } = resolveTenant(host);
-
-  // Inject tenant details into request headers for Server Components & RLS client
-  if (tenantId) {
-    requestHeaders.set('x-tenant-id', tenantId);
-    requestHeaders.set('x-tenant-type', isCustomDomain ? 'custom_domain' : 'subdomain');
-  }
+  const isApiRoute = pathname.startsWith('/api');
 
   // ---------------------------------------------------------------------------
-  // TASK 3: URL REWRITING (App Router Multi-Tenant Mapping)
+  // 7. PUBLIC RESORT WEBSITE REWRITING (Custom Domains & Subdomains)
+  // Maps raigadtropical.in/ -> /[tenantId]
+  // Maps raigadtropical.in/book -> /[tenantId]/book
+  // Maps raigadtropical.in/portal/[id] -> /[tenantId]/portal/[id]
   // ---------------------------------------------------------------------------
-  // If the request is for the root apex platform or is a platform route, do not rewrite
-  if (isApex || isAdminRoute || isLoginRoute || isOnboardingRoute || isAuthRoute || !tenantId) {
+  if (isApex || isAdminRoute || isLoginRoute || isOnboardingRoute || isAuthRoute || isApiRoute || !tenantId) {
     return response;
   }
 
-  // Avoid recursive rewrites if the path already starts with the tenant identifier
+  // Avoid recursive rewrite
   if (pathname.startsWith(`/${tenantId}`)) {
     return response;
   }
 
-  // Seamlessly rewrite tenant public requests:
-  // e.g. firstresort.com/book -> /[tenantId]/book
-  // e.g. resort-a.propsynchub.com/ -> /[tenantId]
   const rewriteUrl = new URL(`/${tenantId}${pathname === '/' ? '' : pathname}${search}`, request.url);
-
   return NextResponse.rewrite(rewriteUrl, {
     request: {
       headers: requestHeaders,
@@ -222,7 +347,7 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - images and static assets (.svg, .png, .jpg, .jpeg, .gif, .webp, .ico)
+     * - images and static assets (.svg, .png, .jpg, .jpeg, .gif, .webp, .ico, .css, .js)
      */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js)$).*)',
   ],

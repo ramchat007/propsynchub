@@ -45,15 +45,14 @@ export async function GET(request: Request) {
       const email = (data.user.email || '').toLowerCase().trim();
       const adminDb = createAdminClient();
 
-      // 1. Check if user is the property owner or whitelisted administrator
-      const isOwnerAdmin =
-        AUTHORIZED_ADMIN_EMAILS.includes(email) || email.includes('admin');
+      // 1. Check if user is a Platform Administrator (superadmin)
+      const isPlatformSuperAdmin = AUTHORIZED_ADMIN_EMAILS.includes(email);
 
-      if (isOwnerAdmin) {
+      if (isPlatformSuperAdmin) {
         const targetTenantId =
           process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID || PRIMARY_DEMO_TENANT_ID;
 
-        // Ensure database profile is synchronized as tenant_admin
+        // Ensure database profile is synchronized as superadmin
         try {
           const { data: existingProfile } = await adminDb
             .from('profiles')
@@ -67,22 +66,22 @@ export async function GET(request: Request) {
               tenant_id: targetTenantId,
               mobile_number: data.user.phone || '+919999999999',
               full_name: email.split('@')[0],
-              role: 'tenant_admin',
+              role: 'superadmin',
             });
           } else if (
-            existingProfile.role !== 'tenant_admin' ||
+            existingProfile.role !== 'superadmin' ||
             existingProfile.tenant_id !== targetTenantId
           ) {
             await adminDb
               .from('profiles')
               .update({
-                role: 'tenant_admin',
+                role: 'superadmin',
                 tenant_id: targetTenantId,
               })
               .eq('id', data.user.id);
           }
         } catch (profErr) {
-          console.warn('[OAuth Callback] Error synchronizing owner profile:', profErr);
+          console.warn('[OAuth Callback] Error synchronizing superadmin profile:', profErr);
         }
 
         return NextResponse.redirect(`${origin}${next}`);
@@ -95,20 +94,31 @@ export async function GET(request: Request) {
         .eq('id', data.user.id)
         .maybeSingle();
 
-      const isAuthorizedStaff =
-        staffProfile?.role === 'tenant_admin' ||
-        staffProfile?.role === 'staff' ||
-        staffProfile?.role === 'superadmin';
+      const authorizedRoles = [
+        'superadmin',
+        'tenant_admin',
+        'resort_manager',
+        'front_desk',
+        'housekeeping',
+        'restaurant_staff',
+        'accountant',
+        'staff',
+      ];
 
-      if (isAuthorizedStaff && staffProfile?.tenant_id) {
+      const isAuthorizedStaff =
+        staffProfile &&
+        authorizedRoles.includes(staffProfile.role) &&
+        staffProfile.tenant_id;
+
+      if (isAuthorizedStaff) {
         return NextResponse.redirect(`${origin}${next}`);
       }
 
-      // 3. Check if user's email matches ANY active resort's official contact_email
+      // 3. Check if user's email matches ANY active resort's official contact_email or admin_emails
       if (email) {
         const { data: tenantByEmail } = await adminDb
           .from('tenants')
-          .select('id, name, contact_phone')
+          .select('id, name, contact_phone, settings')
           .ilike('contact_email', email)
           .eq('is_active', true)
           .maybeSingle();
@@ -134,11 +144,32 @@ export async function GET(request: Request) {
         }
       }
 
-      // 4. UNAUTHORIZED USER: Not an approved resort manager or staff member
+      // 4. Check if user has an active guest booking
+      const { data: guestBooking } = await adminDb
+        .from('bookings')
+        .select('id, tenant_id')
+        .ilike('guest_email', email)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (guestBooking) {
+        // Fetch tenant subdomain for guest portal route
+        const { data: guestTenant } = await adminDb
+          .from('tenants')
+          .select('subdomain')
+          .eq('id', guestBooking.tenant_id)
+          .single();
+
+        const tenantSlug = guestTenant?.subdomain || 'raigad-tropical';
+        return NextResponse.redirect(`${origin}/${tenantSlug}/portal/${guestBooking.id}`);
+      }
+
+      // 5. UNAUTHORIZED USER: Not an approved resort manager or staff member
       // Sign out to revoke the active session cookie
       await supabase.auth.signOut();
 
-      const errorMsg = `Access Denied: Your Google account (${data.user.email}) is not registered as a resort owner or staff member on PropSyncHub.`;
+      const errorMsg = `Access Denied: Your Google account (${data.user.email}) is not registered as a resort owner or staff member on PropSyncHub. Google identity verified, but authorization is not granted.`;
       return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(errorMsg)}`);
     }
   }

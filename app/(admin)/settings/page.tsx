@@ -1,7 +1,7 @@
 import React from 'react';
 import { redirect } from 'next/navigation';
 import { requireAdminAuth } from '@/lib/auth/admin-guard';
-import RazorpaySettingsClient from '@/components/admin/RazorpaySettingsClient';
+import ResortSettingsClient from '@/components/admin/ResortSettingsClient';
 import { getTenantRazorpayStatus } from '@/app/actions/payment';
 
 export const dynamic = 'force-dynamic';
@@ -15,18 +15,21 @@ export default async function SettingsPage() {
   }
 
   const tenantId = auth.tenantId!;
-  const tenantName = auth.tenant?.name || 'Resort Administration';
+  const tenant = auth.tenant;
+
+  if (!tenant) {
+    redirect('/dashboard');
+  }
 
   // Fetch current Razorpay configuration status (masked secret)
   const status = await getTenantRazorpayStatus(tenantId);
 
   return (
-    <RazorpaySettingsClient
-      tenantId={tenantId}
-      tenantName={tenantName}
-      initialKeyId={status.keyId}
-      initialMaskedSecret={status.maskedSecret}
-      isConfigured={status.configured}
+    <ResortSettingsClient
+      tenant={tenant}
+      razorpayKeyId={status.keyId}
+      razorpayMaskedSecret={status.maskedSecret}
+      isRazorpayConfigured={status.configured}
     />
   );
 }

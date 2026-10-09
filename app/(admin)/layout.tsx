@@ -1,7 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import AdminSidebarNav from '@/components/admin/AdminSidebarNav';
-import { getAuthenticatedAdminContext } from '@/lib/auth/admin-guard';
+import { getAuthenticatedAdminContext, getAuthorizedResorts } from '@/lib/auth/admin-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,6 +65,8 @@ export default async function AdminLayout({
       ? auth.tenant.settings.primaryColorHex.trim()
       : '#059669';
 
+  const userResorts = await getAuthorizedResorts();
+
   return (
     <div
       style={{ '--brand-primary': primaryBrandColor } as React.CSSProperties}
@@ -76,6 +78,9 @@ export default async function AdminLayout({
         resortSubdomain={resortSubdomain}
         userRole={userRole}
         primaryBrandColor={primaryBrandColor}
+        currentTenantId={auth.tenantId || ''}
+        userResorts={userResorts}
+        moduleEntitlements={auth.tenant?.settings?.module_entitlements}
       />
 
       {/* 2. Main Content Area */}

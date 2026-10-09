@@ -9,8 +9,13 @@ export const dynamic = 'force-dynamic';
 export default async function AdminReportsPage() {
   const auth = await requireAdminAuth('/reports');
 
-  // P1.3 Role Guard: Staff cannot view financial reports
-  if (auth.role === 'staff') {
+  // P1.3 Role Guard: Staff, Housekeeping, Restaurant Staff cannot view financial reports
+  if (
+    auth.role === 'staff' ||
+    auth.role === 'housekeeping' ||
+    auth.role === 'restaurant_staff' ||
+    auth.role === 'guest'
+  ) {
     redirect('/dashboard');
   }
 
@@ -47,6 +52,7 @@ export default async function AdminReportsPage() {
       bookings={bookings}
       rooms={rooms}
       incidentals={incidentals}
+      userRole={auth.role}
     />
   );
 }

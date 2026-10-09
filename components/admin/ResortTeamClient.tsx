@@ -13,6 +13,17 @@ interface ResortTeamClientProps {
   currentUserId: string;
 }
 
+const roleBadgeConfig: Record<string, { label: string; icon: string; style: string }> = {
+  superadmin: { label: 'Platform Master', icon: '⚡', style: 'bg-purple-50 text-purple-800 border-purple-200 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800' },
+  tenant_admin: { label: 'Resort Administrator', icon: '🛡️', style: 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800' },
+  resort_manager: { label: 'Resort Manager', icon: '📋', style: 'bg-teal-50 text-teal-800 border-teal-200 dark:bg-teal-950/60 dark:text-teal-300 dark:border-teal-800' },
+  front_desk: { label: 'Front Desk', icon: '🛎️', style: 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800' },
+  housekeeping: { label: 'Housekeeping Staff', icon: '🧹', style: 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800' },
+  restaurant_staff: { label: 'Restaurant Staff', icon: '🍽️', style: 'bg-orange-50 text-orange-800 border-orange-200 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800' },
+  accountant: { label: 'Accountant', icon: '💳', style: 'bg-indigo-50 text-indigo-800 border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800' },
+  staff: { label: 'Front Desk Staff', icon: '🔑', style: 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800' },
+};
+
 export default function ResortTeamClient({
   tenantId,
   resortName,
@@ -29,7 +40,7 @@ export default function ResortTeamClient({
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteName, setInviteName] = useState('');
   const [inviteMobile, setInviteMobile] = useState('');
-  const [inviteRole, setInviteRole] = useState<'staff' | 'tenant_admin'>('staff');
+  const [inviteRole, setInviteRole] = useState<UserRole>('front_desk');
   const [formError, setFormError] = useState<string | null>(null);
 
   // Confirmation modal state for removal
@@ -207,7 +218,13 @@ export default function ResortTeamClient({
             href="/settings"
             className="border-b-2 border-transparent pb-3 text-xs sm:text-sm font-semibold text-stone-500 hover:border-stone-300 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200 flex items-center gap-2"
           >
-            <span>💳</span> Payment Gateway
+            <span>🏨</span> Resort Defaults &amp; Payments
+          </Link>
+          <Link
+            href="/settings/tax"
+            className="border-b-2 border-transparent pb-3 text-xs sm:text-sm font-semibold text-stone-500 hover:border-stone-300 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200 flex items-center gap-2"
+          >
+            <span>📜</span> Taxes &amp; Meal Plans
           </Link>
           <Link
             href="/settings/subscription"
@@ -339,15 +356,18 @@ export default function ResortTeamClient({
                       </td>
 
                       <td className="py-4 px-4">
-                        {isAdmin ? (
-                          <div className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-800 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
-                            <span>🛡️</span> Resort Administrator
-                          </div>
-                        ) : (
-                          <div className="inline-flex items-center gap-1.5 rounded-lg bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-800 border border-sky-200 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800">
-                            <span>🔑</span> Front Desk Staff
-                          </div>
-                        )}
+                        {(() => {
+                          const config = roleBadgeConfig[member.role] || {
+                            label: member.role,
+                            icon: '👤',
+                            style: 'bg-stone-50 text-stone-800 border-stone-200 dark:bg-neutral-800 dark:text-stone-300 dark:border-neutral-700',
+                          };
+                          return (
+                            <div className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-bold border ${config.style}`}>
+                              <span>{config.icon}</span> {config.label}
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       <td className="py-4 px-4 hidden md:table-cell text-stone-600 dark:text-stone-400 font-mono text-[11px]">
@@ -533,52 +553,74 @@ export default function ResortTeamClient({
                 <label className="block text-xs font-bold text-neutral-900 dark:text-white mb-2">
                   Assign Access Role <span className="text-rose-500">*</span>
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div
-                    onClick={() => setInviteRole('staff')}
-                    className={`cursor-pointer rounded-2xl border p-3.5 transition ${
-                      inviteRole === 'staff'
-                        ? 'border-sky-500 bg-sky-50/60 dark:bg-sky-950/30 dark:border-sky-500'
-                        : 'border-stone-200 hover:border-stone-300 dark:border-neutral-800'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-base">🔑</span>
-                      <input
-                        type="radio"
-                        checked={inviteRole === 'staff'}
-                        onChange={() => setInviteRole('staff')}
-                        className="text-sky-600 focus:ring-sky-500"
-                      />
-                    </div>
-                    <p className="mt-2 font-bold text-xs text-neutral-900 dark:text-white">Front Desk Staff</p>
-                    <p className="mt-1 text-[11px] text-stone-500 dark:text-stone-400 leading-tight">
-                      Day-to-day reservations, check-in/out, and room calendar.
-                    </p>
-                  </div>
-
-                  <div
-                    onClick={() => setInviteRole('tenant_admin')}
-                    className={`cursor-pointer rounded-2xl border p-3.5 transition ${
-                      inviteRole === 'tenant_admin'
-                        ? 'border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/30 dark:border-emerald-500'
-                        : 'border-stone-200 hover:border-stone-300 dark:border-neutral-800'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-base">🛡️</span>
-                      <input
-                        type="radio"
-                        checked={inviteRole === 'tenant_admin'}
-                        onChange={() => setInviteRole('tenant_admin')}
-                        className="text-emerald-600 focus:ring-emerald-500"
-                      />
-                    </div>
-                    <p className="mt-2 font-bold text-xs text-neutral-900 dark:text-white">Resort Admin</p>
-                    <p className="mt-1 text-[11px] text-stone-500 dark:text-stone-400 leading-tight">
-                      Full access to financials, payment keys, CMS, and team management.
-                    </p>
-                  </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-56 overflow-y-auto pr-1">
+                  {[
+                    {
+                      id: 'tenant_admin',
+                      label: 'Resort Administrator',
+                      icon: '🛡️',
+                      desc: 'Full administrative access: pricing, financials, team, CMS, and settings.',
+                    },
+                    {
+                      id: 'resort_manager',
+                      label: 'Resort Manager',
+                      icon: '📋',
+                      desc: 'Manages day-to-day operations, reports, team view, and guest services.',
+                    },
+                    {
+                      id: 'front_desk',
+                      label: 'Front Desk',
+                      icon: '🛎️',
+                      desc: 'Reservations, calendar, check-in/out, unit assignment, and guest desk.',
+                    },
+                    {
+                      id: 'housekeeping',
+                      label: 'Housekeeping Staff',
+                      icon: '🧹',
+                      desc: 'Room readiness, cleaning task board, and inspection transitions.',
+                    },
+                    {
+                      id: 'restaurant_staff',
+                      label: 'Restaurant Staff',
+                      icon: '🍽️',
+                      desc: 'Menu catalog, active order tickets, preparing/ready/delivered workflow.',
+                    },
+                    {
+                      id: 'accountant',
+                      label: 'Accountant',
+                      icon: '💳',
+                      desc: 'Financial records, guest folios, settlement, invoices, and payment reports.',
+                    },
+                  ].map((r) => {
+                    const isSelected = inviteRole === r.id;
+                    return (
+                      <div
+                        key={r.id}
+                        onClick={() => setInviteRole(r.id as UserRole)}
+                        className={`cursor-pointer rounded-xl border p-2.5 transition ${
+                          isSelected
+                            ? 'border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/30 dark:border-emerald-500'
+                            : 'border-stone-200 hover:border-stone-300 dark:border-neutral-800'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm">{r.icon}</span>
+                          <input
+                            type="radio"
+                            checked={isSelected}
+                            onChange={() => setInviteRole(r.id as UserRole)}
+                            className="text-emerald-600 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <p className="mt-1 font-bold text-xs text-neutral-900 dark:text-white">
+                          {r.label}
+                        </p>
+                        <p className="mt-0.5 text-[10px] text-stone-500 dark:text-stone-400 leading-tight">
+                          {r.desc}
+                        </p>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

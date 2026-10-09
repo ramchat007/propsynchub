@@ -4,19 +4,39 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import SignOutButton from './SignOutButton';
+import { Tenant, UserRole, ModuleEntitlements } from '@/types';
+import { switchActiveResort } from '@/app/actions/tenant';
 
 interface AdminSidebarNavProps {
   resortName?: string;
   resortSubdomain?: string;
-  userRole?: 'superadmin' | 'tenant_admin' | 'staff' | 'guest';
+  userRole?: UserRole;
   primaryBrandColor?: string;
+  currentTenantId?: string;
+  userResorts?: Tenant[];
+  moduleEntitlements?: Partial<ModuleEntitlements>;
 }
+
+const roleLabels: Record<string, string> = {
+  superadmin: 'Platform Master',
+  tenant_admin: 'Resort Admin Suite',
+  resort_manager: 'Manager Suite',
+  front_desk: 'Front Desk Suite',
+  housekeeping: 'Housekeeping Desk',
+  restaurant_staff: 'Restaurant Desk',
+  accountant: 'Financial Accounts',
+  staff: 'Front Desk Suite',
+  guest: 'Guest Account',
+};
 
 export default function AdminSidebarNav({
   resortName = 'Resort PMS',
   resortSubdomain = 'raigad-tropical',
   userRole = 'tenant_admin',
   primaryBrandColor = '#059669',
+  currentTenantId = '',
+  userResorts = [],
+  moduleEntitlements,
 }: AdminSidebarNavProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -73,6 +93,51 @@ export default function AdminSidebarNav({
       ),
     },
     {
+      name: 'Housekeeping Desk',
+      href: '/housekeeping',
+      icon: (
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        </svg>
+      ),
+    },
+    {
+      name: 'Restaurant & Orders',
+      href: '/restaurant',
+      icon: (
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+        </svg>
+      ),
+    },
+    {
+      name: 'Guest Services',
+      href: '/guest-services',
+      icon: (
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+        </svg>
+      ),
+    },
+    {
+      name: 'Activities & Add-ons',
+      href: '/activities',
+      icon: (
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      ),
+    },
+    {
+      name: 'Guest Reviews',
+      href: '/reviews',
+      icon: (
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+        </svg>
+      ),
+    },
+    {
       name: 'Reports & Analytics',
       href: '/reports',
       icon: (
@@ -110,12 +175,21 @@ export default function AdminSidebarNav({
       ),
     },
     {
+      name: 'Taxes & Meal Plans',
+      href: '/settings/tax',
+      icon: (
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
+        </svg>
+      ),
+    },
+    {
       name: 'Payment Settings',
       href: '/settings',
       icon: (
         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <circle cx="12" cy="12" r="3" strokeWidth="2" />
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83-2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>
       ),
     },
@@ -128,13 +202,78 @@ export default function AdminSidebarNav({
         </svg>
       ),
     },
+    {
+      name: 'Platform Master',
+      href: '/admin-master',
+      icon: (
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+        </svg>
+      ),
+    },
   ];
 
   const allowedLinks = navLinks.filter((link) => {
-    if (userRole === 'staff') {
-      return ['/dashboard', '/bookings', '/calendar', '/inventory'].includes(link.href);
+    // Platform Master link is strictly and ONLY for superadmin
+    if (link.href === '/admin-master') {
+      return userRole === 'superadmin';
     }
-    return true;
+
+    // Filter out modules disabled in tenant settings
+    if (moduleEntitlements) {
+      if (link.href === '/restaurant' && moduleEntitlements.restaurant === false) return false;
+      if (link.href === '/activities' && moduleEntitlements.activities === false) return false;
+      if (link.href === '/housekeeping' && moduleEntitlements.housekeeping === false) return false;
+      if (link.href === '/guest-services' && moduleEntitlements.guest_services === false) return false;
+      if (link.href === '/reviews' && moduleEntitlements.reviews === false) return false;
+    }
+
+    if (userRole === 'superadmin' || userRole === 'tenant_admin') {
+      return true;
+    }
+
+    if (userRole === 'resort_manager') {
+      return [
+        '/dashboard',
+        '/bookings',
+        '/calendar',
+        '/inventory',
+        '/housekeeping',
+        '/restaurant',
+        '/guest-services',
+        '/activities',
+        '/reviews',
+        '/reports',
+        '/settings/team',
+      ].includes(link.href);
+    }
+
+    if (userRole === 'front_desk' || userRole === 'staff') {
+      return [
+        '/dashboard',
+        '/bookings',
+        '/calendar',
+        '/inventory',
+        '/housekeeping',
+        '/guest-services',
+        '/restaurant',
+        '/activities',
+      ].includes(link.href);
+    }
+
+    if (userRole === 'housekeeping') {
+      return ['/dashboard', '/housekeeping', '/inventory'].includes(link.href);
+    }
+
+    if (userRole === 'restaurant_staff') {
+      return ['/dashboard', '/restaurant'].includes(link.href);
+    }
+
+    if (userRole === 'accountant') {
+      return ['/dashboard', '/bookings', '/reports', '/settings', '/audit-logs'].includes(link.href);
+    }
+
+    return ['/dashboard'].includes(link.href);
   });
 
   return (
@@ -151,7 +290,7 @@ export default function AdminSidebarNav({
               >
                 {lettermark}
               </span>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="truncate font-serif text-base font-bold text-white">
                   {safeResortName}
                 </p>
@@ -159,10 +298,39 @@ export default function AdminSidebarNav({
                   className="text-[10px] font-bold uppercase tracking-[0.18em]"
                   style={{ color: safeBrandColor }}
                 >
-                  {userRole === 'staff' ? 'Front Desk Suite' : 'Resort Admin Suite'}
+                  {roleLabels[userRole] || 'Resort Operations'}
                 </p>
               </div>
             </div>
+
+            {/* Multi-Resort Selector (Requirement 8) */}
+            {userResorts && userResorts.length > 1 && (
+              <div className="border-b border-white/10 bg-white/5 px-4 py-2.5">
+                <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                  <span>Switch Resort</span>
+                  <span className="rounded bg-neutral-800 px-1.5 py-0.2 text-[9px] text-neutral-300">
+                    {userResorts.length} properties
+                  </span>
+                </div>
+                <select
+                  value={currentTenantId}
+                  onChange={async (e) => {
+                    const targetId = e.target.value;
+                    if (targetId && targetId !== currentTenantId) {
+                      await switchActiveResort(targetId);
+                      window.location.reload();
+                    }
+                  }}
+                  className="mt-1.5 w-full rounded-lg border border-white/15 bg-neutral-900 px-2.5 py-1.5 text-xs font-semibold text-white transition focus:border-white/40 focus:outline-none"
+                >
+                  {userResorts.map((r) => (
+                    <option key={r.id} value={r.id} className="bg-neutral-950 text-white">
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Navigation links */}
             <nav className="space-y-1.5 px-4 py-6">

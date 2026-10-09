@@ -1,7 +1,8 @@
 import { requireAdminAuth } from '@/lib/auth/admin-guard';
 import { createAdminClient } from '@/lib/supabase';
 import HotelDashboardClient from '@/components/admin/HotelDashboardClient';
-import { Room, Booking } from '@/types';
+import { Room, Booking, HousekeepingTask } from '@/types';
+import { getHousekeepingTasks } from '@/app/actions/housekeeping';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,11 +33,23 @@ export default async function AdminDashboardPage() {
 
   const bookings: Booking[] = (rawBookings || []) as Booking[];
 
+  // 3. Fetch Housekeeping tasks to display assigned staff on room cards
+  let housekeepingTasks: HousekeepingTask[] = [];
+  try {
+    const hkRes = await getHousekeepingTasks(auth.tenantId!);
+    if (hkRes.success && hkRes.data) {
+      housekeepingTasks = hkRes.data;
+    }
+  } catch {
+    // Non-blocking fallback
+  }
+
   return (
     <HotelDashboardClient
       tenant={auth.tenant}
       initialRooms={rooms}
       initialBookings={bookings}
+      initialHousekeepingTasks={housekeepingTasks}
     />
   );
 }

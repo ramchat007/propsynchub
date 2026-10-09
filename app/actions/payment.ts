@@ -298,6 +298,7 @@ export async function verifyRazorpayPayment(payload: {
   signature: string;
   bookingId: string;
   tenantId: string;
+  amountPaid?: number;
 }): Promise<PaymentActionResponse<{ bookingId: string }>> {
   try {
     const { orderId, paymentId, signature, bookingId, tenantId } = payload;
@@ -344,21 +345,47 @@ export async function verifyRazorpayPayment(payload: {
       return { success: false, error: 'Payment signature validation failed. Transaction could not be verified.' };
     }
 
-    // 2b. Fetch current booking to determine total and advance amounts
+    // 2b. Fetch current booking to determine total and advance amounts and check idempotency
     const { data: existingBooking } = await adminDb
       .from('bookings')
-      .select('total_amount_inr, paid_amount_inr')
+      .select('total_amount_inr, paid_amount_inr, balance_amount_inr, razorpay_payment_id, payment_status, booking_status')
       .eq('id', bookingId)
       .single();
 
-    const totalBill = Number(existingBooking?.total_amount_inr || 0);
+    if (!existingBooking) {
+      return { success: false, error: 'Booking reservation not found.' };
+    }
+
+    // Idempotency guard: If this transaction was already processed, return success immediately
+    if (existingBooking.razorpay_payment_id === paymentId) {
+      return {
+        success: true,
+        message: 'Payment was already processed and verified.',
+        data: { bookingId },
+      };
+    }
+
+    const totalBill = Number(existingBooking.total_amount_inr || 0);
+    const configuredAdvance = Number(existingBooking.paid_amount_inr || 0);
+
+    // Determine authoritative paid and balance amounts
+    const amountPaid =
+      payload.amountPaid !== undefined
+        ? Number(payload.amountPaid)
+        : configuredAdvance > 0 && configuredAdvance < totalBill
+        ? configuredAdvance
+        : totalBill;
+
+    const isFullyPaid = amountPaid >= totalBill;
+    const finalPaymentStatus: 'paid' | 'partially_paid' = isFullyPaid ? 'paid' : 'partially_paid';
+    const finalBalance = Math.max(0, totalBill - amountPaid);
 
     // 3. Update Booking to CONFIRMED and handle payment balance
     const updateBookingPayload: Record<string, unknown> = {
       booking_status: 'confirmed',
-      payment_status: 'paid',
-      paid_amount_inr: totalBill,
-      balance_amount_inr: 0,
+      payment_status: finalPaymentStatus,
+      paid_amount_inr: amountPaid,
+      balance_amount_inr: finalBalance,
       razorpay_order_id: orderId,
       razorpay_payment_id: paymentId,
       razorpay_signature: signature,

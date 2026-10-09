@@ -95,6 +95,12 @@ export default function RazorpaySettingsClient({
             <span>💳</span> Payment Gateway
           </Link>
           <Link
+            href="/settings/tax"
+            className="border-b-2 border-transparent pb-3 text-xs sm:text-sm font-semibold text-stone-500 hover:border-stone-300 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200 flex items-center gap-2"
+          >
+            <span>📜</span> Taxes &amp; Meal Plans
+          </Link>
+          <Link
             href="/settings/subscription"
             className="border-b-2 border-transparent pb-3 text-xs sm:text-sm font-semibold text-stone-500 hover:border-stone-300 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200 flex items-center gap-2"
           >

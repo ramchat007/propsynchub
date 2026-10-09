@@ -2,6 +2,7 @@ import { requireAdminAuth } from '@/lib/auth/admin-guard';
 import { createAdminClient } from '@/lib/supabase';
 import InventoryDashboardClient from '@/components/admin/InventoryDashboardClient';
 import { Room, RoomCategory, Pricing } from '@/types';
+import { getRoomBlocksList, getSeasonalPricingRulesList } from '@/app/actions/inventory';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,12 +64,20 @@ export default async function AdminInventoryPage() {
     });
   }
 
+  // 4. Fetch Phase 2 Maintenance Blocks & Seasonal Pricing Rules
+  const [roomBlocks, seasonalRules] = await Promise.all([
+    getRoomBlocksList(auth.tenantId!),
+    getSeasonalPricingRulesList(auth.tenantId!),
+  ]);
+
   return (
     <InventoryDashboardClient
       tenant={auth.tenant}
       initialCategories={categories}
       initialRooms={rooms}
       initialPricing={pricing}
+      initialRoomBlocks={roomBlocks}
+      initialSeasonalRules={seasonalRules}
     />
   );
 }

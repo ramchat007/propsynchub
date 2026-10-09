@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { requireAdminAuth } from '@/lib/auth/admin-guard';
 import { getBookingLedger } from '@/app/actions/ledger';
+import { createAdminClient } from '@/lib/supabase';
+import { Room } from '@/types';
 import BookingLedgerClient from '@/components/admin/BookingLedgerClient';
 
 export const dynamic = 'force-dynamic';
@@ -48,5 +50,13 @@ export default async function BookingDetailPage({ params }: BookingDetailPagePro
     );
   }
 
-  return <BookingLedgerClient initialDetails={ledgerRes.data} />;
+  // Fetch rooms for check-in unit assignment
+  const adminDb = createAdminClient();
+  const { data: rawRooms } = await adminDb
+    .from('rooms')
+    .select('*')
+    .eq('tenant_id', auth.tenantId!);
+  const availableRooms = (rawRooms as unknown as Room[]) || [];
+
+  return <BookingLedgerClient initialDetails={ledgerRes.data} availableRooms={availableRooms} />;
 }

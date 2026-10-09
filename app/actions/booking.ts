@@ -3,8 +3,11 @@
 import { revalidatePath } from 'next/cache';
 import { createServerSupabaseClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase';
-import { Room, RoomCategory, Booking, PaymentPolicy } from '@/types';
+import { Room, RoomCategory, Booking, PaymentPolicy, NightlyRateBreakdown } from '@/types';
 import { notifications } from '@/lib/notifications';
+import { getActiveRoomBlocks, isRoomBlockedForDates } from '@/lib/maintenance-engine';
+import { calculateAuthoritativeStayPricing } from '@/lib/pricing-engine';
+import { getSeasonalPricingRulesList } from '@/app/actions/inventory';
 
 export interface RoomWithPricing extends Room {
   nights: number;
@@ -14,6 +17,7 @@ export interface RoomWithPricing extends Room {
   extraPaxTotal: number;
   grandTotal: number;
   category?: RoomCategory;
+  nightlyBreakdown?: NightlyRateBreakdown[];
 }
 
 export interface AvailabilityResponse {
@@ -109,7 +113,13 @@ export async function checkRoomAvailability(
       activeOverlapping.map((b) => b.room_id).filter(Boolean)
     );
 
-    // 3. Fetch room categories to determine extra pax charges
+    // 3. Fetch active maintenance blocks & seasonal pricing rules (Phase 2 Invariants)
+    const [activeBlocks, pricingRules] = await Promise.all([
+      getActiveRoomBlocks(supabase, tenantId),
+      getSeasonalPricingRulesList(tenantId),
+    ]);
+
+    // 4. Fetch room categories
     let categories: RoomCategory[] = [];
     const { data: catData, error: catError } = await supabase
       .from('room_categories')
@@ -132,11 +142,13 @@ export async function checkRoomAvailability(
     }
 
     const categoryMap = new Map<string, RoomCategory>();
+    const categoryIdMap = new Map<string, RoomCategory>();
     categories.forEach((cat) => {
       categoryMap.set(cat.name.toLowerCase(), cat);
+      if (cat.id) categoryIdMap.set(cat.id, cat);
     });
 
-    // 4. Filter unbooked rooms and compute dynamic pricing
+    // 5. Filter unbooked, unblocked rooms and compute authoritative dynamic pricing
     const availableRoomsWithPricing: RoomWithPricing[] = [];
 
     for (const room of allRooms as Room[]) {
@@ -145,38 +157,44 @@ export async function checkRoomAvailability(
         continue;
       }
 
-      // Check capacity
-      const totalPax = adults + children;
-      const roomCapacity = (room.capacity_adults || 2) + (room.capacity_children || 0);
-      if (adults > (room.capacity_adults || 2) + 2 || totalPax > roomCapacity + 2) {
-        // Exceeds absolute max capacity including extra rollaway beds
+      // Skip if room has an active maintenance or out-of-order block overlapping stay dates
+      const blockCheck = isRoomBlockedForDates(room.id, checkIn, checkOut, activeBlocks);
+      if (blockCheck.isBlocked) {
         continue;
       }
 
-      // Find matching category
-      const matchedCategory = categoryMap.get((room.room_type || '').toLowerCase());
-      const extraPaxRate = matchedCategory?.extra_pax_price_inr ?? 1000;
+      // Find matching category (by ID or name)
+      const matchedCategory = (room.category_id ? categoryIdMap.get(room.category_id) : null) ||
+        categoryMap.get((room.room_type || '').toLowerCase());
 
-      // Base price calculation: (Total Nights * Room Base Price)
-      const baseTotal = nights * Number(room.base_price_inr);
+      // Authoritative stay pricing with precedence: Date Override > Seasonal > Weekend > Base Tariff
+      // Also enforces adult / child occupancy thresholds
+      const pricingResult = calculateAuthoritativeStayPricing({
+        checkIn,
+        checkOut,
+        adults,
+        children,
+        basePriceInr: Number(room.base_price_inr),
+        category: matchedCategory,
+        room,
+        pricingRules,
+      });
 
-      // Extra pax calculation: (Total Nights * Extra Pax Charge * Number of Extra Guests)
-      // Standard room base covers 2 adults; any adult beyond 2 is considered extra pax
-      const extraGuests = Math.max(0, adults - 2);
-      const extraPaxTotal = nights * extraPaxRate * extraGuests;
-
-      // Dynamic grand total
-      const grandTotal = baseTotal + extraPaxTotal;
+      // If room exceeds allowed occupancy, exclude from availability
+      if (!pricingResult.is_available) {
+        continue;
+      }
 
       availableRoomsWithPricing.push({
         ...room,
         nights,
-        baseTotal,
-        extraGuests,
-        extraPaxRate,
-        extraPaxTotal,
-        grandTotal,
+        baseTotal: pricingResult.total_room_charges_inr,
+        extraGuests: pricingResult.extra_adults + pricingResult.extra_children,
+        extraPaxRate: pricingResult.extra_adult_rate_inr,
+        extraPaxTotal: pricingResult.total_extra_guest_charges_inr,
+        grandTotal: pricingResult.grand_total_inr,
         category: matchedCategory,
+        nightlyBreakdown: pricingResult.nightly_breakdown,
       });
     }
 
@@ -211,6 +229,11 @@ export async function createReservation(payload: {
   specialRequests?: string;
   paymentPolicy?: PaymentPolicy;
   paidAmount?: number;
+  mealPlanCode?: import('@/types').MealPlanCode;
+  mealPlanChargeInr?: number;
+  guestGstin?: string;
+  companyName?: string;
+  billingAddress?: string;
 }): Promise<{ success: boolean; error?: string; booking?: Booking }> {
   try {
     const {
@@ -228,6 +251,11 @@ export async function createReservation(payload: {
       specialRequests,
       paymentPolicy = 'FULL_PAYMENT',
       paidAmount = 0,
+      mealPlanCode = 'EP',
+      mealPlanChargeInr = 0,
+      guestGstin,
+      companyName,
+      billingAddress,
     } = payload;
 
     if (!tenantId || (!roomId && !categoryId) || !checkIn || !checkOut || !guestName || !guestMobile) {
@@ -240,6 +268,9 @@ export async function createReservation(payload: {
 
     let resolvedRoomId = roomId || null;
     let resolvedCategoryId = categoryId || null;
+
+    // Fetch active maintenance blocks for tenant (Phase 2 Invariant: maintenance blocks reduce sellable inventory)
+    const activeBlocks = await getActiveRoomBlocks(adminDb, tenantId);
 
     // 1. If category provided but no roomId, find an available physical room in that category
     if (!resolvedRoomId && resolvedCategoryId) {
@@ -275,7 +306,13 @@ export async function createReservation(payload: {
             .map((b) => b.room_id)
         );
 
-        const freeRoom = catRooms.find((r) => !busyRoomIds.has(r.id));
+        // Filter out rooms that are already booked OR have an active maintenance block
+        const freeRoom = catRooms.find((r) => {
+          if (busyRoomIds.has(r.id)) return false;
+          const blocked = isRoomBlockedForDates(r.id, checkIn, checkOut, activeBlocks);
+          return !blocked.isBlocked;
+        });
+
         if (freeRoom) {
           resolvedRoomId = freeRoom.id;
         }
@@ -293,6 +330,16 @@ export async function createReservation(payload: {
         if (rm?.category_id) resolvedCategoryId = rm.category_id;
       }
 
+      // 2a. Check maintenance block collision
+      const blockCheck = isRoomBlockedForDates(resolvedRoomId, checkIn, checkOut, activeBlocks);
+      if (blockCheck.isBlocked) {
+        return {
+          success: false,
+          error: `Unit is blocked for ${blockCheck.block?.block_type.replace('_', ' ') || 'maintenance'} (${blockCheck.block?.start_date} to ${blockCheck.block?.end_date}). Reason: ${blockCheck.block?.reason || 'Maintenance'}.`,
+        };
+      }
+
+      // 2b. Check reservation collision
       const { data: collision } = await adminDb
         .from('bookings')
         .select('id, booking_status, hold_expires_at, created_at')
@@ -318,6 +365,37 @@ export async function createReservation(payload: {
           error: 'This room was just reserved by another guest for the selected dates. Please choose another option.',
         };
       }
+    }
+
+    // 2c. Enforce adult/child occupancy limits (Phase 2 Invariant)
+    let targetCategory: RoomCategory | null = null;
+    let targetRoom: Room | null = null;
+    if (resolvedRoomId) {
+      const { data: rm } = await adminDb.from('rooms').select('*').eq('id', resolvedRoomId).single();
+      if (rm) {
+        targetRoom = rm as Room;
+        if (!resolvedCategoryId && rm.category_id) resolvedCategoryId = rm.category_id;
+      }
+    }
+    if (resolvedCategoryId) {
+      const { data: cat } = await adminDb.from('room_categories').select('*').eq('id', resolvedCategoryId).single();
+      if (cat) targetCategory = cat as RoomCategory;
+    }
+
+    const occupancyValidation = calculateAuthoritativeStayPricing({
+      checkIn,
+      checkOut,
+      adults,
+      children,
+      category: targetCategory,
+      room: targetRoom,
+    });
+
+    if (!occupancyValidation.is_available) {
+      return {
+        success: false,
+        error: occupancyValidation.unavailability_reason || 'Occupancy exceeds maximum limit for this accommodation.',
+      };
     }
 
     const cleanMobile = guestMobile.replace(/[^\d+]/g, '');
@@ -366,6 +444,11 @@ export async function createReservation(payload: {
       payment_status: initialPaymentStatus,
       hold_expires_at: holdExpiresAt,
       special_requests: specialRequests?.trim() || null,
+      meal_plan_code: mealPlanCode || 'EP',
+      meal_plan_charge_inr: mealPlanChargeInr || 0,
+      guest_gstin: guestGstin ? guestGstin.trim().toUpperCase() : null,
+      company_name: companyName?.trim() || null,
+      billing_address: billingAddress?.trim() || null,
     };
 
     let booking = null;
@@ -378,6 +461,15 @@ export async function createReservation(payload: {
 
     if (insertError) {
       // Fallback if newly added columns are not yet in the DB schema
+      const metaEnvelope = {
+        meal_plan_code: mealPlanCode || 'EP',
+        meal_plan_charge_inr: mealPlanChargeInr || 0,
+        guest_gstin: guestGstin ? guestGstin.trim().toUpperCase() : null,
+        company_name: companyName?.trim() || null,
+        billing_address: billingAddress?.trim() || null,
+        notes: specialRequests?.trim() || null,
+      };
+
       const fallbackPayload = {
         tenant_id: tenantId,
         room_id: resolvedRoomId,
@@ -392,7 +484,7 @@ export async function createReservation(payload: {
         total_amount_inr: totalAmount,
         booking_status: initialBookingStatus,
         payment_status: initialPaymentStatus,
-        special_requests: specialRequests?.trim() || null,
+        special_requests: `JSON:${JSON.stringify(metaEnvelope)}`,
       };
       const retry = await adminDb
         .from('bookings')

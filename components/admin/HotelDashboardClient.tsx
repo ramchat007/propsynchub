@@ -3,13 +3,15 @@
 import React, { useState, useTransition, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Tenant, Room, Booking, RoomStatus } from '@/types';
+import { Tenant, Room, Booking, RoomStatus, HousekeepingTask } from '@/types';
 import {
   createReservation,
   updateBookingStatus,
 } from '@/app/actions/booking';
 import { updateRoomStatus } from '@/app/actions/inventory';
 import { ToastContainer, ToastMessage } from './Toast';
+import CheckInModal from './CheckInModal';
+import SplitCheckoutModal from './SplitCheckoutModal';
 
 export interface RoomOccupancyInfo {
   state:
@@ -31,18 +33,32 @@ interface HotelDashboardClientProps {
   tenant: Tenant | null;
   initialRooms: Room[];
   initialBookings: Booking[];
+  initialHousekeepingTasks?: HousekeepingTask[];
 }
 
 export default function HotelDashboardClient({
   tenant,
   initialRooms,
   initialBookings,
+  initialHousekeepingTasks = [],
 }: HotelDashboardClientProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
+  const housekeepingMap = useMemo(() => {
+    const map = new Map<string, HousekeepingTask>();
+    (initialHousekeepingTasks || []).forEach((t) => {
+      if (t.room_id) map.set(t.room_id, t);
+    });
+    return map;
+  }, [initialHousekeepingTasks]);
+
   // Active view tab in bottom action queue
-  const [activeQueueTab, setActiveQueueTab] = useState<'arrivals' | 'departures' | 'recent'>('arrivals');
+  const [activeQueueTab, setActiveQueueTab] = useState<'arrivals' | 'inhouse' | 'departures' | 'recent'>('arrivals');
+
+  // Phase 3 Front Desk Modals State
+  const [checkInTargetBooking, setCheckInTargetBooking] = useState<Booking | null>(null);
+  const [checkoutTargetBookingId, setCheckoutTargetBookingId] = useState<string | null>(null);
 
   // Room Rack Filter
   const [roomRackFilter, setRoomRackFilter] = useState<'all' | 'available' | 'occupied' | 'arriving' | 'upcoming' | 'maintenance'>('all');
@@ -109,20 +125,20 @@ export default function HotelDashboardClient({
         (b) => b.room_id === room.id && b.booking_status !== 'cancelled'
       );
 
-      // 1. In-House Checked In (arrived today or earlier) OR Active Stay covering today
+      // 1. In-House Checked In (physically checked in at front desk)
       const inHouseBooking = roomBookings.find(
         (b) =>
-          (b.booking_status === 'checked_in' && b.check_in_date <= todayStr) ||
-          (b.booking_status === 'confirmed' &&
-            b.check_in_date <= todayStr &&
-            b.check_out_date > todayStr)
+          b.booking_status === 'checked_in' &&
+          b.check_in_date <= todayStr &&
+          b.check_out_date >= todayStr
       );
 
-      // 2. Scheduled to arrive today
+      // 2. Scheduled to arrive today (awaiting front desk check-in)
       const arrivingToday = roomBookings.find(
         (b) =>
           (b.booking_status === 'confirmed' || b.booking_status === 'pending') &&
-          b.check_in_date === todayStr
+          b.check_in_date <= todayStr &&
+          b.check_out_date >= todayStr
       );
 
       // 3. Soonest upcoming reservation on the books (future check-in date)
@@ -241,7 +257,8 @@ export default function HotelDashboardClient({
   const arrivalsToday = useMemo(() => {
     return initialBookings.filter(
       (b) =>
-        b.check_in_date === todayStr &&
+        b.check_in_date <= todayStr &&
+        b.check_out_date >= todayStr &&
         (b.booking_status === 'confirmed' || b.booking_status === 'pending')
     );
   }, [initialBookings, todayStr]);
@@ -251,13 +268,17 @@ export default function HotelDashboardClient({
     0
   );
 
+  const inHouseBookings = useMemo(() => {
+    return initialBookings.filter(
+      (b) => b.booking_status === 'checked_in'
+    );
+  }, [initialBookings]);
+
   const departuresToday = useMemo(() => {
     return initialBookings.filter(
       (b) =>
         b.check_out_date === todayStr &&
-        (b.booking_status === 'checked_in' ||
-          b.booking_status === 'confirmed' ||
-          b.booking_status === 'checked_out')
+        (b.booking_status === 'checked_in' || b.booking_status === 'checked_out')
     );
   }, [initialBookings, todayStr]);
 
@@ -286,29 +307,6 @@ export default function HotelDashboardClient({
   // ===================================================================
   // ACTIONS
   // ===================================================================
-  const handleCheckInGuest = (bookingId: string) => {
-    startTransition(async () => {
-      const res = await updateBookingStatus(bookingId, tenantId, 'checked_in');
-      if (res.success) {
-        addToast('success', res.message || 'Guest checked in successfully.');
-        router.refresh();
-      } else {
-        addToast('error', res.error || 'Failed to check in guest.');
-      }
-    });
-  };
-
-  const handleCheckOutGuest = (bookingId: string) => {
-    startTransition(async () => {
-      const res = await updateBookingStatus(bookingId, tenantId, 'checked_out');
-      if (res.success) {
-        addToast('success', res.message || 'Guest checked out successfully.');
-        router.refresh();
-      } else {
-        addToast('error', res.error || 'Failed to check out guest.');
-      }
-    });
-  };
 
   const handleToggleRoomStatus = (room: Room, newStatus: RoomStatus) => {
     startTransition(async () => {
@@ -585,6 +583,8 @@ export default function HotelDashboardClient({
               const b = occupancy.booking;
               const nextB = occupancy.nextBooking;
               const recentOut = occupancy.recentCheckout;
+              const hkTask = housekeepingMap.get(room.id);
+              const assignedStaff = hkTask?.assigned_staff_name;
 
               const isOccupied = occupancy.state === 'occupied' || occupancy.state === 'departing_today';
               const isArriving = occupancy.state === 'arriving_today';
@@ -637,19 +637,44 @@ export default function HotelDashboardClient({
                         </span>
                       )}
                       {isDirty && (
-                        <span className="rounded-md bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-800 border border-rose-300 dark:bg-rose-950 dark:text-rose-300">
-                          🧹 Dirty
-                        </span>
+                        <div className="flex items-center gap-1">
+                          <span className="rounded-md bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-800 border border-rose-300 dark:bg-rose-950 dark:text-rose-300">
+                            🧹 Dirty
+                          </span>
+                          {assignedStaff ? (
+                            <span className="rounded-md bg-stone-100 dark:bg-neutral-800 px-1.5 py-0.5 text-[10px] font-bold text-stone-700 dark:text-stone-300" title={`Assigned staff: ${assignedStaff}`}>
+                              👤 {assignedStaff}
+                            </span>
+                          ) : (
+                            <span className="rounded-md bg-amber-100 dark:bg-amber-950/50 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 dark:text-amber-300">
+                              Unassigned
+                            </span>
+                          )}
+                        </div>
                       )}
                       {isCleaning && (
-                        <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-300 dark:bg-amber-950 dark:text-amber-300">
-                          🧼 Cleaning
-                        </span>
+                        <div className="flex items-center gap-1">
+                          <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-300 dark:bg-amber-950 dark:text-amber-300">
+                            🧼 Cleaning
+                          </span>
+                          {assignedStaff && (
+                            <span className="rounded-md bg-amber-100/60 dark:bg-amber-950 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-200" title={`Assigned staff: ${assignedStaff}`}>
+                              👤 {assignedStaff}
+                            </span>
+                          )}
+                        </div>
                       )}
                       {isInspected && (
-                        <span className="rounded-md bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800 border border-blue-300 dark:bg-blue-950 dark:text-blue-300">
-                          🔍 Inspected
-                        </span>
+                        <div className="flex items-center gap-1">
+                          <span className="rounded-md bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800 border border-blue-300 dark:bg-blue-950 dark:text-blue-300">
+                            🔍 Inspected
+                          </span>
+                          {assignedStaff && (
+                            <span className="rounded-md bg-blue-100/60 dark:bg-blue-950 px-1.5 py-0.5 text-[10px] font-bold text-blue-800 dark:text-blue-200" title={`Inspected by: ${assignedStaff}`}>
+                              👤 {assignedStaff}
+                            </span>
+                          )}
+                        </div>
                       )}
                       {isAvailable && nextB && (
                         <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-300 dark:bg-emerald-950 dark:border-emerald-800 dark:text-emerald-300">
@@ -737,9 +762,50 @@ export default function HotelDashboardClient({
                         </div>
                       ) : (
                         <div className="py-1 text-center text-[11px] text-stone-500">
-                          Unit blocked for repairs/cleaning.
+                          {isDirty ? (
+                            <div className="space-y-0.5">
+                              <p className="font-semibold text-rose-700 dark:text-rose-400">
+                                🧹 Pending Room Turnover
+                              </p>
+                              <p className="text-[10px] text-stone-600 dark:text-stone-300 font-medium">
+                                {assignedStaff ? (
+                                  <>Assigned Cleaner: <strong className="text-stone-900 dark:text-white font-bold">{assignedStaff}</strong></>
+                                ) : (
+                                  <span className="text-amber-600 dark:text-amber-400">⚠️ Staff Unassigned · Go to Housekeeping</span>
+                                )}
+                              </p>
+                            </div>
+                          ) : isCleaning ? (
+                            <div className="space-y-0.5">
+                              <p className="font-semibold text-amber-700 dark:text-amber-400">
+                                🧼 Cleaning In Progress
+                              </p>
+                              <p className="text-[10px] text-stone-600 dark:text-stone-300 font-medium">
+                                {assignedStaff ? (
+                                  <>Assigned Cleaner: <strong className="text-stone-900 dark:text-white font-bold">{assignedStaff}</strong></>
+                                ) : (
+                                  <span className="text-amber-600 dark:text-amber-400">⚠️ Staff Unassigned</span>
+                                )}
+                              </p>
+                            </div>
+                          ) : isInspected ? (
+                            <div className="space-y-0.5">
+                              <p className="font-semibold text-blue-700 dark:text-blue-400">
+                                🔍 Inspected &amp; Ready for Release
+                              </p>
+                              <p className="text-[10px] text-stone-600 dark:text-stone-300 font-medium">
+                                {assignedStaff ? (
+                                  <>Inspected by: <strong className="text-stone-900 dark:text-white font-bold">{assignedStaff}</strong></>
+                                ) : (
+                                  'Ready for Front Desk Check-in'
+                                )}
+                              </p>
+                            </div>
+                          ) : (
+                            <div>Unit blocked for repairs/maintenance.</div>
+                          )}
                           {nextB && (
-                            <span className="block text-[10px] text-amber-600 mt-0.5">
+                            <span className="block text-[10px] text-amber-600 mt-1 font-semibold">
                               ⚠️ Upcoming stay on {nextB.check_in_date} ({nextB.guest_name})
                             </span>
                           )}
@@ -760,7 +826,7 @@ export default function HotelDashboardClient({
                         </Link>
                         <button
                           type="button"
-                          onClick={() => handleCheckOutGuest(b.id)}
+                          onClick={() => setCheckoutTargetBookingId(b.id)}
                           disabled={isPending}
                           className="flex-1 rounded-lg bg-stone-900 py-1.5 text-center text-[11px] font-bold text-white hover:bg-stone-800 dark:bg-white dark:text-stone-900"
                         >
@@ -772,7 +838,7 @@ export default function HotelDashboardClient({
                     {isArriving && b && (
                       <button
                         type="button"
-                        onClick={() => handleCheckInGuest(b.id)}
+                        onClick={() => setCheckInTargetBooking(b)}
                         disabled={isPending}
                         className="w-full rounded-lg bg-emerald-600 py-1.5 text-center text-[11px] font-bold text-white hover:bg-emerald-500 shadow-2xs"
                       >
@@ -882,6 +948,18 @@ export default function HotelDashboardClient({
 
             <button
               type="button"
+              onClick={() => setActiveQueueTab('inhouse')}
+              className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition ${
+                activeQueueTab === 'inhouse'
+                  ? 'bg-rose-100 text-rose-900 dark:bg-rose-950 dark:text-rose-200'
+                  : 'text-stone-600 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-neutral-800'
+              }`}
+            >
+              🔴 In-House Stays ({inHouseBookings.length})
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveQueueTab('departures')}
               className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition ${
                 activeQueueTab === 'departures'
@@ -955,11 +1033,79 @@ export default function HotelDashboardClient({
 
                         <button
                           type="button"
-                          onClick={() => handleCheckInGuest(b.id)}
+                          onClick={() => setCheckInTargetBooking(b)}
                           disabled={isPending}
                           className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-2xs hover:bg-emerald-500"
                         >
                           🔑 Check In
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab: In-House Stays */}
+        {activeQueueTab === 'inhouse' && (
+          <div className="mt-4">
+            {inHouseBookings.length === 0 ? (
+              <div className="py-10 text-center text-xs text-stone-400">
+                No in-house guests currently checked in.
+              </div>
+            ) : (
+              <div className="divide-y divide-stone-100 dark:divide-neutral-800">
+                {inHouseBookings.map((b) => {
+                  const room = initialRooms.find((r) => r.id === b.room_id);
+                  return (
+                    <div
+                      key={b.id}
+                      className="flex flex-col gap-3 py-3.5 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 font-bold text-rose-700 text-xs dark:bg-rose-950 dark:text-rose-300">
+                          #{room?.room_number || 'R'}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="font-bold text-stone-900 dark:text-white text-xs">
+                              {b.guest_name}
+                            </p>
+                            <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                              🔴 In-House
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-stone-500">
+                            {room?.name} · Due Checkout: {b.check_out_date} · 👥 {b.num_adults} Adults{b.num_children > 0 ? `, ${b.num_children} Kids` : ''} · 📞 {b.guest_mobile_number}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 self-end sm:self-center">
+                        <div className="text-right text-xs">
+                          <span className="font-bold text-stone-900 dark:text-white block">
+                            ₹{Number(b.total_amount_inr).toLocaleString()}
+                          </span>
+                          <span className="text-[10px] text-stone-500 font-semibold uppercase">
+                            {b.payment_status}
+                          </span>
+                        </div>
+
+                        <Link
+                          href={`/bookings/${b.id}`}
+                          className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-stone-200"
+                        >
+                          Folio Bill
+                        </Link>
+
+                        <button
+                          type="button"
+                          onClick={() => setCheckoutTargetBookingId(b.id)}
+                          className="rounded-xl bg-stone-900 px-4 py-2 text-xs font-bold text-white hover:bg-stone-800 dark:bg-white dark:text-stone-900"
+                        >
+                          🛎️ Settle &amp; Checkout
                         </button>
                       </div>
                     </div>
@@ -1024,7 +1170,7 @@ export default function HotelDashboardClient({
                         ) : (
                           <button
                             type="button"
-                            onClick={() => handleCheckOutGuest(b.id)}
+                            onClick={() => setCheckoutTargetBookingId(b.id)}
                             disabled={isPending}
                             className="rounded-xl bg-stone-900 px-4 py-2 text-xs font-bold text-white hover:bg-stone-800 dark:bg-white dark:text-stone-900"
                           >
@@ -1352,6 +1498,38 @@ export default function HotelDashboardClient({
             </form>
           </div>
         </div>
+      )}
+
+      {/* PHASE 3: FRONT DESK CHECK-IN MODAL */}
+      {checkInTargetBooking && (
+        <CheckInModal
+          booking={checkInTargetBooking}
+          rooms={initialRooms}
+          isOpen={!!checkInTargetBooking}
+          onClose={() => setCheckInTargetBooking(null)}
+          onSuccess={(msg) => {
+            addToast('success', msg);
+            setCheckInTargetBooking(null);
+            router.refresh();
+          }}
+          onError={(err) => addToast('error', err)}
+        />
+      )}
+
+      {/* PHASE 3: SPLIT CHECKOUT & SETTLEMENT MODAL */}
+      {checkoutTargetBookingId && (
+        <SplitCheckoutModal
+          bookingId={checkoutTargetBookingId}
+          tenantId={tenantId}
+          isOpen={!!checkoutTargetBookingId}
+          onClose={() => setCheckoutTargetBookingId(null)}
+          onSuccess={(msg, invoice) => {
+            addToast('success', `${msg}${invoice ? ` (Invoice #${invoice.invoice_number})` : ''}`);
+            setCheckoutTargetBookingId(null);
+            router.refresh();
+          }}
+          onError={(err) => addToast('error', err)}
+        />
       )}
     </div>
   );

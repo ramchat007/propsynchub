@@ -13,10 +13,15 @@ import {
   rescheduleBookingDates,
   cancelBooking,
 } from '@/app/actions/booking';
-import { IncidentalCategory } from '@/types';
+import { redactGuestIdentity } from '@/app/actions/front-desk';
+import { IncidentalCategory, Room } from '@/types';
+import CheckInModal from './CheckInModal';
+import SplitCheckoutModal from './SplitCheckoutModal';
+import GuestQrModal from './GuestQrModal';
 
 interface BookingLedgerClientProps {
   initialDetails: BookingLedgerDetails;
+  availableRooms?: Room[];
 }
 
 const CATEGORY_LABELS: Record<IncidentalCategory, { label: string; color: string }> = {
@@ -30,7 +35,7 @@ const CATEGORY_LABELS: Record<IncidentalCategory, { label: string; color: string
   other: { label: 'Incidentals', color: 'bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-300' },
 };
 
-export default function BookingLedgerClient({ initialDetails }: BookingLedgerClientProps) {
+export default function BookingLedgerClient({ initialDetails, availableRooms = [] }: BookingLedgerClientProps) {
   const router = useRouter();
 
   // Local Ledger State
@@ -52,7 +57,14 @@ export default function BookingLedgerClient({ initialDetails }: BookingLedgerCli
   // Invoice Modal State
   const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
 
-  // Settle & Checkout Confirmation Modal State
+  // Phase 3 Front Desk & Split Settlement Modal States
+  const [isCheckInOpen, setIsCheckInOpen] = useState(false);
+  const [isSplitCheckoutOpen, setIsSplitCheckoutOpen] = useState(false);
+
+  // Phase 6 In-Room QR & Portal Modal State
+  const [isGuestQrOpen, setIsGuestQrOpen] = useState(false);
+
+  // Legacy Settle & Checkout Confirmation Modal State (fallback)
   const [isSettleModalOpen, setIsSettleModalOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'upi' | 'cash' | 'card' | 'bank_transfer' | 'razorpay'>('upi');
   const [paymentReference, setPaymentReference] = useState('');
@@ -115,6 +127,33 @@ export default function BookingLedgerClient({ initialDetails }: BookingLedgerCli
         router.refresh();
       } else {
         setFeedback({ type: 'error', message: res.error || 'Failed to cancel reservation.' });
+      }
+    });
+  }
+
+  /**
+   * Redact guest identity document under privacy policy
+   */
+  function handleRedactIdentity() {
+    if (
+      !confirm(
+        "Are you sure you want to redact this guest's identity document record under the data privacy retention policy?"
+      )
+    )
+      return;
+    startTransition(async () => {
+      const res = await redactGuestIdentity(booking.tenant_id, booking.id);
+      if (res.success) {
+        setFeedback({
+          type: 'success',
+          message: res.message || 'Identity data redacted.',
+        });
+        router.refresh();
+      } else {
+        setFeedback({
+          type: 'error',
+          message: res.error || 'Failed to redact identity.',
+        });
       }
     });
   }
@@ -277,15 +316,33 @@ export default function BookingLedgerClient({ initialDetails }: BookingLedgerCli
             </button>
           )}
 
+          {(booking.booking_status === 'confirmed' || booking.booking_status === 'pending') && (
+            <button
+              type="button"
+              onClick={() => setIsCheckInOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-500"
+            >
+              <span>🔑 Check In Guest</span>
+            </button>
+          )}
+
           {booking.booking_status !== 'checked_out' && booking.booking_status !== 'cancelled' && (
             <button
               type="button"
-              onClick={() => setIsSettleModalOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-600 bg-emerald-50 px-3.5 py-2.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-700"
+              onClick={() => setIsSplitCheckoutOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-rose-600 bg-rose-50 px-3.5 py-2.5 text-xs font-bold text-rose-800 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-700"
             >
-              <span>✓ Settle &amp; Check Out</span>
+              <span>🛎️ Settle &amp; Check Out</span>
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={() => setIsGuestQrOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-xs font-semibold text-stone-700 shadow-2xs hover:bg-stone-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-stone-300"
+          >
+            <span>📱 Room QR &amp; Portal</span>
+          </button>
 
           <button
             type="button"
@@ -369,6 +426,45 @@ export default function BookingLedgerClient({ initialDetails }: BookingLedgerCli
                 {booking.num_adults} Adults{booking.num_children > 0 ? `, ${booking.num_children} Children` : ''}
               </span>
             </div>
+
+            {/* Identity & KYC Verification Badge */}
+            <div className="pt-2.5 border-t border-neutral-100 dark:border-neutral-800">
+              <span className="block text-[11px] font-semibold text-neutral-500">Identity (KYC)</span>
+              {booking.guest_identity_data ? (
+                <div className="mt-1 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                      ✓ {String((booking.guest_identity_data as Record<string, unknown>).id_type || 'ID').toUpperCase()}: {String((booking.guest_identity_data as Record<string, unknown>).id_number_masked || 'Verified')}
+                    </span>
+                    {!(booking.guest_identity_data as Record<string, unknown>).is_redacted && (
+                      <button
+                        type="button"
+                        onClick={handleRedactIdentity}
+                        disabled={isPending}
+                        title="Redact KYC Document data for privacy compliance"
+                        className="text-[10px] font-semibold text-rose-600 hover:underline"
+                      >
+                        Redact
+                      </button>
+                    )}
+                  </div>
+                  {Boolean((booking.guest_identity_data as Record<string, unknown>).is_foreign_guest) && (
+                    <p className="text-[10px] text-indigo-600 dark:text-indigo-400">
+                      🛂 Form C Filed ({String((booking.guest_identity_data as Record<string, unknown>).nationality || 'Foreign')})
+                    </p>
+                  )}
+                  {booking.room_key_number && (
+                    <p className="text-[10px] text-neutral-500">
+                      🔑 Physical Key / Card: #{booking.room_key_number}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <span className="text-[11px] text-neutral-400 italic">
+                  Not recorded yet · Verify at Check-In
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -397,6 +493,22 @@ export default function BookingLedgerClient({ initialDetails }: BookingLedgerCli
                 <span className="font-semibold text-neutral-800 dark:text-neutral-200">{booking.check_out_date}</span>
               </div>
             </div>
+            {booking.actual_check_in_at && (
+              <div>
+                <span className="block text-[11px] text-neutral-400">Checked In At</span>
+                <span className="text-neutral-700 dark:text-neutral-300">
+                  {new Date(booking.actual_check_in_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                </span>
+              </div>
+            )}
+            {booking.actual_check_out_at && (
+              <div>
+                <span className="block text-[11px] text-neutral-400">Checked Out At</span>
+                <span className="text-neutral-700 dark:text-neutral-300">
+                  {new Date(booking.actual_check_out_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                </span>
+              </div>
+            )}
             <div>
               <span className="block text-[11px] text-neutral-400">Property / Tenant</span>
               <span className="text-neutral-700 dark:text-neutral-300">{tenant?.name || 'Resort Property'}</span>
@@ -438,6 +550,14 @@ export default function BookingLedgerClient({ initialDetails }: BookingLedgerCli
                 ₹{grandTotal.toLocaleString()}
               </span>
             </div>
+            {booking.invoice_number && (
+              <div className="flex justify-between border-t border-neutral-100 pt-1.5 text-[11px] dark:border-neutral-800">
+                <span className="text-neutral-500">Official Invoice:</span>
+                <span className="font-mono font-bold text-neutral-800 dark:text-neutral-200">
+                  {booking.invoice_number}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="mt-4">
@@ -1130,6 +1250,67 @@ export default function BookingLedgerClient({ initialDetails }: BookingLedgerCli
             </form>
           </div>
         </div>
+      )}
+
+      {/* PHASE 3: FRONT DESK CHECK-IN MODAL */}
+      {isCheckInOpen && (
+        <CheckInModal
+          booking={booking}
+          rooms={availableRooms.length > 0 ? availableRooms : room ? [room] : []}
+          isOpen={isCheckInOpen}
+          onClose={() => setIsCheckInOpen(false)}
+          onSuccess={(msg) => {
+            setFeedback({ type: 'success', message: msg });
+            setIsCheckInOpen(false);
+            setDetails((prev) => ({
+              ...prev,
+              booking: {
+                ...prev.booking,
+                booking_status: 'checked_in',
+              },
+            }));
+            router.refresh();
+          }}
+          onError={(err) => setFeedback({ type: 'error', message: err })}
+        />
+      )}
+
+      {/* PHASE 3: SPLIT CHECKOUT & SETTLEMENT MODAL */}
+      {isSplitCheckoutOpen && (
+        <SplitCheckoutModal
+          bookingId={booking.id}
+          tenantId={booking.tenant_id}
+          isOpen={isSplitCheckoutOpen}
+          onClose={() => setIsSplitCheckoutOpen(false)}
+          onSuccess={(msg, invoice) => {
+            setFeedback({
+              type: 'success',
+              message: `${msg}${invoice ? ` (Invoice #${invoice.invoice_number})` : ''}`,
+            });
+            setIsSplitCheckoutOpen(false);
+            setDetails((prev) => ({
+              ...prev,
+              booking: {
+                ...prev.booking,
+                booking_status: 'checked_out',
+                payment_status: 'paid',
+                invoice_number: invoice?.invoice_number || prev.booking.invoice_number,
+              },
+            }));
+            router.refresh();
+          }}
+          onError={(err) => setFeedback({ type: 'error', message: err })}
+        />
+      )}
+
+      {/* PHASE 6: IN-ROOM QR & SIGNED PORTAL ACCESS MODAL */}
+      {isGuestQrOpen && (
+        <GuestQrModal
+          tenant={tenant}
+          booking={booking}
+          room={room}
+          onClose={() => setIsGuestQrOpen(false)}
+        />
       )}
     </div>
   );

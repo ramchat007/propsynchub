@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useTransition } from 'react';
+import React, { useState, useTransition, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Booking, Room, Tenant } from '@/types';
@@ -17,6 +17,16 @@ interface BookingsListClientProps {
   tenant: Tenant | null;
 }
 
+export type BookingSortField =
+  | 'check_in_date'
+  | 'check_out_date'
+  | 'created_at'
+  | 'guest_name'
+  | 'total_amount_inr'
+  | 'booking_status';
+
+export type BookingSortDirection = 'asc' | 'desc';
+
 export default function BookingsListClient({
   bookings: initialBookings,
   rooms,
@@ -27,6 +37,9 @@ export default function BookingsListClient({
   const todayStr = new Date().toISOString().split('T')[0];
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [datePresetFilter, setDatePresetFilter] = useState<'all' | 'today_arrivals' | 'today_departures' | 'upcoming'>('all');
+  const [sortField, setSortField] = useState<BookingSortField>('check_in_date');
+  const [sortDirection, setSortDirection] = useState<BookingSortDirection>('asc');
   const [isPending, startTransition] = useTransition();
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -50,26 +63,74 @@ export default function BookingsListClient({
   const roomMap = new Map<string, Room>();
   rooms.forEach((r) => roomMap.set(r.id, r));
 
-  const filteredBookings = bookings.filter((b) => {
-    const matchesSearch =
-      b.guest_name.toLowerCase().includes(search.toLowerCase()) ||
-      b.guest_mobile_number.includes(search) ||
-      b.id.toLowerCase().includes(search.toLowerCase());
-
-    const matchesStatus =
-      statusFilter === 'all' || b.booking_status === statusFilter;
-
-    return matchesSearch && matchesStatus;
-  });
-
   // Executive Metrics
   const totalBookingsCount = bookings.length;
   const inHouseCount = bookings.filter((b) => b.booking_status === 'checked_in').length;
   const confirmedCount = bookings.filter((b) => b.booking_status === 'confirmed').length;
   const pendingCount = bookings.filter((b) => b.booking_status === 'pending').length;
+  const todayArrivalsCount = bookings.filter((b) => b.check_in_date === todayStr && b.booking_status !== 'cancelled').length;
+  const todayDeparturesCount = bookings.filter((b) => b.check_out_date === todayStr && b.booking_status !== 'cancelled').length;
   const totalOnBooksRevenue = bookings
     .filter((b) => b.booking_status !== 'cancelled')
     .reduce((sum, b) => sum + Number(b.total_amount_inr || 0), 0);
+
+  // Multi-Column Sorting & Filtering
+  const filteredBookings = useMemo(() => {
+    const list = bookings.filter((b) => {
+      const matchesSearch =
+        b.guest_name.toLowerCase().includes(search.toLowerCase()) ||
+        b.guest_mobile_number.includes(search) ||
+        b.id.toLowerCase().includes(search.toLowerCase());
+
+      if (!matchesSearch) return false;
+
+      // Status Filter
+      if (statusFilter !== 'all' && b.booking_status !== statusFilter) {
+        return false;
+      }
+
+      // Date Preset Filter
+      if (datePresetFilter === 'today_arrivals') {
+        return b.check_in_date === todayStr && b.booking_status !== 'cancelled';
+      }
+      if (datePresetFilter === 'today_departures') {
+        return b.check_out_date === todayStr && b.booking_status !== 'cancelled';
+      }
+      if (datePresetFilter === 'upcoming') {
+        return b.check_in_date >= todayStr && b.booking_status !== 'cancelled';
+      }
+
+      return true;
+    });
+
+    list.sort((a, b) => {
+      let aVal: unknown = a[sortField as keyof Booking];
+      let bVal: unknown = b[sortField as keyof Booking];
+
+      if (sortField === 'total_amount_inr') {
+        aVal = Number(aVal) || 0;
+        bVal = Number(bVal) || 0;
+      } else if (typeof aVal === 'string') {
+        aVal = aVal.toLowerCase();
+        bVal = (bVal as string || '').toLowerCase();
+      }
+
+      if ((aVal as number | string) < (bVal as number | string)) return sortDirection === 'asc' ? -1 : 1;
+      if ((aVal as number | string) > (bVal as number | string)) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return list;
+  }, [bookings, search, statusFilter, datePresetFilter, sortField, sortDirection, todayStr]);
+
+  const handleHeaderSort = (field: BookingSortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection(field === 'total_amount_inr' || field === 'created_at' ? 'desc' : 'asc');
+    }
+  };
 
   /**
    * Handle Status Change (Accept, Decline, Check In, Check Out)
@@ -341,7 +402,57 @@ export default function BookingsListClient({
         </div>
       )}
 
-      {/* FILTER BAR */}
+      {/* FILTER TABS */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
+        {[
+          { id: 'all', label: 'All Bookings', count: totalBookingsCount, type: 'status' },
+          { id: 'today_arrivals', label: '🛬 Arriving Today', count: todayArrivalsCount, type: 'date' },
+          { id: 'today_departures', label: '🛫 Departing Today', count: todayDeparturesCount, type: 'date' },
+          { id: 'checked_in', label: '🔴 In-House Active', count: inHouseCount, type: 'status' },
+          { id: 'pending', label: '⚠️ Pending Approval', count: pendingCount, type: 'status' },
+          { id: 'confirmed', label: '🟢 Confirmed Upcoming', count: confirmedCount, type: 'status' },
+          { id: 'checked_out', label: 'Checked Out', count: bookings.filter((b) => b.booking_status === 'checked_out').length, type: 'status' },
+          { id: 'cancelled', label: 'Cancelled', count: bookings.filter((b) => b.booking_status === 'cancelled').length, type: 'status' },
+        ].map((tab) => {
+          const isSelected =
+            tab.type === 'status'
+              ? statusFilter === tab.id && datePresetFilter === 'all'
+              : datePresetFilter === tab.id;
+
+          return (
+            <button
+              key={tab.id}
+              onClick={() => {
+                if (tab.type === 'date') {
+                  setDatePresetFilter(tab.id as 'today_arrivals' | 'today_departures');
+                  setStatusFilter('all');
+                } else {
+                  setStatusFilter(tab.id);
+                  setDatePresetFilter('all');
+                }
+              }}
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3.5 py-2 font-bold text-xs transition ${
+                isSelected
+                  ? 'bg-neutral-900 text-white shadow-xs dark:bg-white dark:text-neutral-900'
+                  : 'bg-white text-neutral-600 hover:bg-neutral-100 border border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800'
+              }`}
+            >
+              <span>{tab.label}</span>
+              <span
+                className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                  isSelected
+                    ? 'bg-white/20 text-white dark:bg-black/20 dark:text-neutral-900'
+                    : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400'
+                }`}
+              >
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* FILTER & SORT TOOLBAR */}
       <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-4 shadow-xs sm:flex-row sm:items-center sm:justify-between dark:border-neutral-800 dark:bg-neutral-900">
         <div className="relative flex-1">
           <input
@@ -353,20 +464,48 @@ export default function BookingsListClient({
           />
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-bold text-neutral-400 uppercase">Status:</span>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-xl border border-neutral-300 bg-transparent px-3 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Sort Field Selector */}
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] font-bold text-neutral-400 uppercase">Sort:</span>
+            <select
+              value={sortField}
+              onChange={(e) => setSortField(e.target.value as BookingSortField)}
+              className="rounded-xl border border-neutral-300 bg-transparent px-2.5 py-2 text-xs text-neutral-900 focus:border-emerald-500 focus:outline-none dark:border-neutral-700 dark:text-neutral-100"
+            >
+              <option value="check_in_date">Check-In Date</option>
+              <option value="check_out_date">Check-Out Date</option>
+              <option value="created_at">Booking Created</option>
+              <option value="guest_name">Guest Name</option>
+              <option value="total_amount_inr">Folio Amount</option>
+              <option value="booking_status">Status</option>
+            </select>
+          </div>
+
+          {/* Sort Direction Toggle */}
+          <button
+            type="button"
+            onClick={() => setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+            className="rounded-xl border border-neutral-300 dark:border-neutral-700 px-2.5 py-2 text-xs font-bold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
+            title="Toggle Sort Order"
           >
-            <option value="all">All Bookings ({bookings.length})</option>
-            <option value="pending">⚠️ Pending Approval ({pendingCount})</option>
-            <option value="confirmed">Confirmed ({confirmedCount})</option>
-            <option value="checked_in">Checked In ({inHouseCount})</option>
-            <option value="checked_out">Checked Out</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
+            {sortDirection === 'asc' ? '▲ Asc' : '▼ Desc'}
+          </button>
+
+          {/* Clear Filters (if active) */}
+          {(search || statusFilter !== 'all' || datePresetFilter !== 'all') && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch('');
+                setStatusFilter('all');
+                setDatePresetFilter('all');
+              }}
+              className="rounded-xl px-2.5 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+            >
+              Reset
+            </button>
+          )}
         </div>
       </div>
 
@@ -376,13 +515,63 @@ export default function BookingsListClient({
           <table className="w-full text-left text-xs">
             <thead className="border-b border-neutral-100 bg-neutral-50/70 text-[11px] font-semibold text-neutral-500 uppercase dark:border-neutral-800 dark:bg-neutral-800/40">
               <tr>
-                <th className="py-3 px-5">Booking Ref</th>
-                <th className="py-3 px-4">Guest Details</th>
+                <th
+                  onClick={() => handleHeaderSort('created_at')}
+                  className="py-3 px-5 cursor-pointer select-none hover:text-neutral-900 dark:hover:text-white"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Booking Ref</span>
+                    <span className="text-[10px] text-neutral-400">
+                      {sortField === 'created_at' ? (sortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                    </span>
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleHeaderSort('guest_name')}
+                  className="py-3 px-4 cursor-pointer select-none hover:text-neutral-900 dark:hover:text-white"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Guest Details</span>
+                    <span className="text-[10px] text-neutral-400">
+                      {sortField === 'guest_name' ? (sortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                    </span>
+                  </div>
+                </th>
                 <th className="py-3 px-4">Stay Pax</th>
                 <th className="py-3 px-4">Assigned Unit &amp; Room Rack Sync</th>
-                <th className="py-3 px-4">Stay Dates</th>
-                <th className="py-3 px-4 text-right">Folio Total</th>
-                <th className="py-3 px-4 text-center">Status</th>
+                <th
+                  onClick={() => handleHeaderSort('check_in_date')}
+                  className="py-3 px-4 cursor-pointer select-none hover:text-neutral-900 dark:hover:text-white"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Stay Dates</span>
+                    <span className="text-[10px] text-neutral-400">
+                      {sortField === 'check_in_date' ? (sortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                    </span>
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleHeaderSort('total_amount_inr')}
+                  className="py-3 px-4 text-right cursor-pointer select-none hover:text-neutral-900 dark:hover:text-white"
+                >
+                  <div className="flex items-center justify-end gap-1">
+                    <span>Folio Total</span>
+                    <span className="text-[10px] text-neutral-400">
+                      {sortField === 'total_amount_inr' ? (sortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                    </span>
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleHeaderSort('booking_status')}
+                  className="py-3 px-4 text-center cursor-pointer select-none hover:text-neutral-900 dark:hover:text-white"
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <span>Status</span>
+                    <span className="text-[10px] text-neutral-400">
+                      {sortField === 'booking_status' ? (sortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                    </span>
+                  </div>
+                </th>
                 <th className="py-3 px-5 text-center">Operations &amp; Folio</th>
               </tr>
             </thead>
