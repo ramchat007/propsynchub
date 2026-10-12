@@ -864,8 +864,8 @@ export default function RestaurantAdminClient({
 
       {/* KOT SLIP VIEW MODAL */}
       {viewingKotOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-neutral-900 p-6 shadow-2xl border border-stone-200 dark:border-neutral-800 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-neutral-900 p-6 shadow-2xl border border-stone-200 dark:border-neutral-800 space-y-4">
             <div className="text-center border-b border-dashed border-stone-300 dark:border-neutral-700 pb-3">
               <span className="text-xs uppercase font-extrabold text-stone-400 tracking-wider">Kitchen Order Ticket</span>
               <h3 className="text-xl font-black text-stone-900 dark:text-white mt-0.5">
@@ -934,8 +934,8 @@ export default function RestaurantAdminClient({
 
       {/* CANCELLATION & FOLIO REVERSAL MODAL */}
       {cancellingOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 p-6 shadow-2xl border border-stone-200 dark:border-neutral-800 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-neutral-900 p-6 shadow-2xl border border-stone-200 dark:border-neutral-800 space-y-4">
             <h3 className="text-base font-black text-rose-600 dark:text-rose-400">
               Cancel Order #{cancellingOrder.order_number}
             </h3>
@@ -987,8 +987,8 @@ export default function RestaurantAdminClient({
 
       {/* POST TO FOLIO MODAL */}
       {folioTargetOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 p-6 shadow-2xl border border-stone-200 dark:border-neutral-800 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-neutral-900 p-6 shadow-2xl border border-stone-200 dark:border-neutral-800 space-y-4">
             <h3 className="text-base font-black text-stone-900 dark:text-white">
               Charge Order #{folioTargetOrder.order_number} to Room Folio
             </h3>
@@ -1042,7 +1042,7 @@ export default function RestaurantAdminClient({
 
       {/* ADD MENU ITEM MODAL */}
       {showAddItemModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
           <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-neutral-900 p-6 shadow-2xl border border-stone-200 dark:border-neutral-800 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-base font-black text-stone-900 dark:text-white">Add New Restaurant Item</h3>
             <form onSubmit={handleCreateMenuItem} className="space-y-3 text-xs">
@@ -1175,7 +1175,7 @@ export default function RestaurantAdminClient({
 
       {/* POS / NEW KITCHEN ORDER MODAL */}
       {showNewOrderModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
           <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-neutral-900 p-6 shadow-2xl border border-stone-200 dark:border-neutral-800 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-base font-black text-stone-900 dark:text-white">
               Create New Kitchen Order (POS / Room Dining)
@@ -1395,7 +1395,7 @@ export default function RestaurantAdminClient({
 
       {/* BULK IMPORT MENU MODAL */}
       {showImportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
           <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-neutral-900 p-6 shadow-2xl border border-stone-200 dark:border-neutral-800 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-start border-b border-stone-200 dark:border-neutral-800 pb-3">
               <div>

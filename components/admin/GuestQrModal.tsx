@@ -66,7 +66,7 @@ export default function GuestQrModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-      <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-neutral-900 shadow-2xl border border-stone-200 dark:border-neutral-800 p-6 sm:p-8 space-y-6 my-8 print:p-0 print:shadow-none print:m-0 print:border-none print:w-full">
+      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-neutral-900 shadow-2xl border border-stone-200 dark:border-neutral-800 p-6 sm:p-8 space-y-6 my-auto print:my-0 print:max-h-none print:overflow-visible print:p-0 print:shadow-none print:m-0 print:border-none print:w-full">
         {/* Modal Top Actions (Hidden when printing) */}
         <div className="flex justify-between items-center border-b border-stone-100 dark:border-neutral-800 pb-3 print:hidden">
           <div className="flex items-center gap-2">

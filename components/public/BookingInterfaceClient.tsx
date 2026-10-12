@@ -1052,8 +1052,8 @@ export default function BookingInterfaceClient({
         {/* 5. SLIDE-OVER CHECKOUT DRAWER (ZERO REDIRECTS, INLINE BOOKING) */}
         {/* ===================================================================== */}
         {isCheckoutOpen && selectedRoom && (
-          <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/60 p-0 sm:p-4 backdrop-blur-xs">
-            <div className="h-full sm:h-auto w-full sm:max-w-lg overflow-y-auto rounded-none sm:rounded-3xl border border-stone-200 bg-white p-6 sm:p-8 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900 animate-in slide-in-from-right duration-300">
+          <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/60 p-0 sm:p-4 backdrop-blur-xs overflow-y-auto">
+            <div className="h-full sm:h-auto sm:max-h-[calc(100dvh-2rem)] w-full sm:max-w-lg overflow-y-auto rounded-none sm:rounded-3xl border border-stone-200 bg-white p-6 sm:p-8 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900 animate-in slide-in-from-right duration-300">
               
               {/* Drawer Header */}
               <div className="flex items-center justify-between border-b border-stone-100 pb-4 dark:border-neutral-800">

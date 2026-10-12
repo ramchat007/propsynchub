@@ -827,8 +827,8 @@ export default function ResortShowcaseClient({
 
       {/* BOOKING LOOKUP / GUEST PORTAL MODAL */}
       {showLookupModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-neutral-900 p-6 shadow-2xl border border-stone-200 dark:border-neutral-800 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-neutral-900 p-6 shadow-2xl border border-stone-200 dark:border-neutral-800 space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="text-base font-black text-stone-900 dark:text-white">Access Guest Portal</h3>
               <button

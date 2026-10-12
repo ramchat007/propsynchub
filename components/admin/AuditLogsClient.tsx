@@ -241,7 +241,7 @@ export default function AuditLogsClient({ initialLogs, tenantName }: AuditLogsCl
       {/* DEEP DIFF INSPECTION MODAL */}
       {/* ===================================================================== */}
       {inspectedLog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs overflow-y-auto">
           <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-neutral-200 bg-white p-6 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">

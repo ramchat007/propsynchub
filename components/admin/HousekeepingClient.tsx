@@ -796,8 +796,8 @@ export default function HousekeepingClient({
       {/* 3. SUPERVISOR REJECTION MODAL (INSPECTION FAILED)                   */}
       {/* =================================================================== */}
       {rejectModalTask && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-6 shadow-2xl dark:border-rose-900/40 dark:bg-neutral-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-rose-200 bg-white p-6 shadow-2xl dark:border-rose-900/40 dark:bg-neutral-900">
             <div className="flex items-center justify-between border-b border-rose-100 pb-3 dark:border-neutral-800">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600">
@@ -880,8 +880,8 @@ export default function HousekeepingClient({
       {/* 4. REPORT FLOOR MAINTENANCE MODAL                                  */}
       {/* =================================================================== */}
       {isMaintenanceModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-6 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-stone-200 bg-white p-6 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
             <div className="flex items-center justify-between border-b border-stone-100 pb-3 dark:border-neutral-800">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600">

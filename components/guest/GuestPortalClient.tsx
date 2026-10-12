@@ -1088,8 +1088,8 @@ export default function GuestPortalClient({
 
               {/* Activity Booking Modal */}
               {selectedActivity && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-                  <div className="w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 p-6 shadow-2xl border border-stone-200 dark:border-neutral-800 space-y-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+                  <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-neutral-900 p-6 shadow-2xl border border-stone-200 dark:border-neutral-800 space-y-4">
                     <h3 className="text-base font-black text-stone-900 dark:text-white">
                       Book {selectedActivity.title}
                     </h3>
@@ -1276,7 +1276,7 @@ export default function GuestPortalClient({
       {/* ========================================================= */}
       {activeDoc && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="w-full max-w-2xl rounded-3xl bg-white p-8 shadow-2xl text-stone-900 space-y-6 my-8 print:p-0 print:shadow-none print:m-0 print:border-none print:w-full">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-8 shadow-2xl text-stone-900 space-y-6 my-auto print:my-0 print:max-h-none print:overflow-visible print:p-0 print:shadow-none print:m-0 print:border-none print:w-full">
             {/* Action Bar (Hidden when printing) */}
             <div className="flex justify-between items-center border-b pb-4 print:hidden">
               <span className="text-xs font-black uppercase tracking-wider text-emerald-800">
@@ -1687,8 +1687,8 @@ export default function GuestPortalClient({
       {/* CANCELLATION REQUEST MODAL */}
       {/* ========================================================= */}
       {showCancellationModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 p-6 shadow-2xl border border-stone-200 dark:border-neutral-800 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-neutral-900 p-6 shadow-2xl border border-stone-200 dark:border-neutral-800 space-y-4">
             <h3 className="text-base font-black text-stone-900 dark:text-white">
               Reservation Cancellation / Change Request
             </h3>

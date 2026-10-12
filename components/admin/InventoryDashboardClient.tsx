@@ -1180,8 +1180,8 @@ export default function InventoryDashboardClient({
       {/* MODAL 1: ADD ROOM CATEGORY */}
       {/* ===================================================================== */}
       {isCategoryModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
             <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
               <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
                 Add Room Category
@@ -1305,8 +1305,8 @@ export default function InventoryDashboardClient({
       {/* MODAL 2: ADD ROOM TO CATEGORY */}
       {/* ===================================================================== */}
       {isRoomModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
             <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
               <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
                 Add Room Unit
@@ -1427,8 +1427,8 @@ export default function InventoryDashboardClient({
       {/* MODAL 3: EDIT PRICING */}
       {/* ===================================================================== */}
       {editingRoom && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-sm rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
             <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
               <div>
                 <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
@@ -1503,8 +1503,8 @@ export default function InventoryDashboardClient({
       {/* MODAL 4: EDIT ROOM CATEGORY */}
       {/* ===================================================================== */}
       {editingCategory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
             <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
               <div>
                 <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
@@ -1629,8 +1629,8 @@ export default function InventoryDashboardClient({
       {/* MODAL 5: EDIT PHYSICAL ROOM UNIT */}
       {/* ===================================================================== */}
       {editingRoomUnit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
             <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
               <div>
                 <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
@@ -1774,8 +1774,8 @@ export default function InventoryDashboardClient({
       {/* MODAL 5: SCHEDULE ROOM BLOCK (Maintenance / Out of Order) */}
       {/* ===================================================================== */}
       {isBlockModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
             <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
               <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
                 Schedule Room Block
@@ -1895,8 +1895,8 @@ export default function InventoryDashboardClient({
       {/* MODAL 6: ADD DYNAMIC RATE RULE */}
       {/* ===================================================================== */}
       {isPricingModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
             <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
               <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
                 Add Dynamic Rate Rule

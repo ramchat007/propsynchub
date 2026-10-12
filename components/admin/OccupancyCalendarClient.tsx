@@ -354,8 +354,8 @@ export default function OccupancyCalendarClient({
 
       {/* 4. Booking Quick Inspector Modal */}
       {selectedBooking && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-6 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-stone-200 bg-white p-6 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
             <div className="flex items-center justify-between border-b border-stone-100 pb-3 dark:border-neutral-800">
               <div>
                 <h3 className="text-base font-bold text-stone-900 dark:text-white">

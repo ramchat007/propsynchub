@@ -721,7 +721,7 @@ export default function ReportsDashboardClient({
       {/* 6. MODAL: GSTR-1 TAX BREAKDOWN PREVIEW */}
       {/* =================================================================== */}
       {gstr1ModalData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
           <div className="relative max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
             <div className="flex items-center justify-between border-b border-neutral-200 pb-4 dark:border-neutral-800">
               <div>
@@ -861,8 +861,8 @@ export default function ReportsDashboardClient({
       {/* 7. MODAL: MODULE ENTITLEMENTS CONFIGURATION */}
       {/* =================================================================== */}
       {showEntitlementsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="relative w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
+          <div className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
             <div className="flex items-center justify-between border-b border-neutral-200 pb-4 dark:border-neutral-800">
               <div>
                 <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-900 dark:bg-emerald-950 dark:text-emerald-300">
