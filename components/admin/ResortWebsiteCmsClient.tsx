@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Tenant } from '@/types';
 import { updateResortWebsiteSettings, uploadBrandLogo } from '@/app/actions/tenant';
 import { ToastContainer, ToastMessage } from './Toast';
+import { formatAddress } from '@/lib/utils';
 
 interface ResortWebsiteCmsClientProps {
   tenant: Tenant;
@@ -29,7 +30,7 @@ interface ResortWebsiteSettings {
   tagline?: string;
   about_description?: string;
   hero_image_url?: string;
-  address?: string;
+  address?: unknown;
   google_maps_url?: string;
   whatsapp_number?: string;
   check_in_time?: string;
@@ -54,7 +55,7 @@ export default function ResortWebsiteCmsClient({ tenant }: ResortWebsiteCmsClien
       'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=1920&q=80'
   );
   const [address, setAddress] = useState(
-    settings.address || 'Survey No. 42, Tropical Greens, Raigad District, Maharashtra 402107'
+    formatAddress(settings.address, 'Survey No. 42, Tropical Greens, Raigad District, Maharashtra 402107')
   );
   const [googleMapsUrl, setGoogleMapsUrl] = useState(
     settings.google_maps_url || 'https://maps.google.com/?q=Raigad,Maharashtra'

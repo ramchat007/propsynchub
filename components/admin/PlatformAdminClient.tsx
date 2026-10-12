@@ -301,7 +301,7 @@ export default function PlatformAdminClient({
             <thead className="border-b border-neutral-100 bg-neutral-50/50 text-[11px] font-bold text-neutral-500 uppercase dark:border-neutral-800 dark:bg-neutral-800/40">
               <tr>
                 <th className="px-5 py-3">Property</th>
-                <th className="px-5 py-3">Domain Mappings</th>
+                <th className="px-5 py-3">Resort URL</th>
                 <th className="px-5 py-3">Primary Admin</th>
                 <th className="px-5 py-3 text-center">Rooms / Cats</th>
                 <th className="px-5 py-3 text-center">Bookings</th>
@@ -324,30 +324,31 @@ export default function PlatformAdminClient({
                       <div className="text-[11px] text-neutral-400">{r.contact_phone || 'No phone set'}</div>
                     </td>
                     <td className="px-5 py-3.5 space-y-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-neutral-400 uppercase font-mono">Sub:</span>
+                      <div>
                         <a
                           href={`/r/${r.subdomain}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="font-mono text-[11px] text-purple-600 hover:underline dark:text-purple-400"
+                          title="Open live resort website"
+                          className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-purple-600 hover:underline dark:text-purple-400"
                         >
-                          {r.subdomain}.propsynchub.in ↗
+                          <span>/r/{r.subdomain}</span>
+                          <span className="text-[10px]">↗</span>
                         </a>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-neutral-400 uppercase font-mono">Custom:</span>
-                        {r.custom_domain ? (
-                          <span className="inline-flex items-center gap-1 font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
-                            <span>https://{r.custom_domain}</span>
-                            <span className="rounded-xs bg-emerald-100 px-1 text-[9px] font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                              Active
-                            </span>
-                          </span>
-                        ) : (
-                          <span className="font-mono text-[11px] text-neutral-400">Not configured</span>
-                        )}
-                      </div>
+                      {r.custom_domain && (
+                        <div className="flex items-center gap-1 font-mono text-[10px] text-neutral-400">
+                          <span>Custom:</span>
+                          <a
+                            href={`https://${r.custom_domain}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-semibold text-emerald-600 hover:underline dark:text-emerald-400"
+                          >
+                            {r.custom_domain} ↗
+                          </a>
+                        </div>
+                      )}
                     </td>
                     <td className="px-5 py-3.5">
                       <span className="font-mono text-neutral-700 dark:text-neutral-300">
@@ -588,19 +589,22 @@ export default function PlatformAdminClient({
 
               <div>
                 <label className="block font-bold text-neutral-700 dark:text-neutral-300">
-                  Unique Subdomain Slug *
+                  Resort URL Slug *
                 </label>
-                <div className="mt-1 flex items-center gap-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-800">
+                <div className="mt-1 flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-800">
+                  <span className="font-mono text-xs text-neutral-400">/r/</span>
                   <input
                     type="text"
                     required
                     placeholder="whispering-palms"
                     value={subdomain}
                     onChange={(e) => setSubdomain(e.target.value)}
-                    className="w-full bg-transparent font-mono text-neutral-900 focus:outline-none dark:text-white"
+                    className="w-full bg-transparent font-mono text-xs text-neutral-900 focus:outline-none dark:text-white"
                   />
-                  <span className="text-neutral-400 font-mono text-[11px]">.propsynchub.in</span>
                 </div>
+                <p className="mt-1 text-[11px] text-neutral-400">
+                  Resort website will be accessible at <code>/r/{subdomain || 'resort-slug'}</code>
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

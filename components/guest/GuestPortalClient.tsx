@@ -22,6 +22,7 @@ import { createServiceRequest } from '@/app/actions/service-requests';
 import { bookResortActivity } from '@/app/actions/activities';
 import { submitGuestReview } from '@/app/actions/reviews';
 import { amountInWords } from '@/lib/tax-engine';
+import { formatAddress } from '@/lib/utils';
 
 interface GuestPortalClientProps {
   tenant: Tenant;
@@ -1306,7 +1307,7 @@ export default function GuestPortalClient({
                   {((tenant.settings as Record<string, unknown>)?.legal_name as string) || tenant.name}
                 </h2>
                 <p className="text-xs text-stone-600 mt-0.5">
-                  {(tenant.settings as { address?: string })?.address || 'Luxury Beachside & Nature Resort, Maharashtra, India'}
+                  {formatAddress((tenant.settings as Record<string, unknown>)?.address, 'Luxury Beachside & Nature Resort, Maharashtra, India')}
                 </p>
                 <div className="text-[11px] text-stone-500 mt-1 space-y-0.5">
                   <p>
@@ -1367,7 +1368,7 @@ export default function GuestPortalClient({
                   <p className="text-[11px] text-stone-400">GST: Unregistered (B2C Consumer)</p>
                 )}
                 <p className="text-stone-600">
-                  {folio.billingAddress || (tenant.settings as { address?: string })?.address || 'Maharashtra, India'}
+                  {folio.billingAddress || formatAddress((tenant.settings as Record<string, unknown>)?.address, 'Maharashtra, India')}
                 </p>
                 <p className="text-stone-600">Mobile: {booking.guest_mobile_number}</p>
                 {booking.guest_email && <p className="text-stone-600">Email: {booking.guest_email}</p>}

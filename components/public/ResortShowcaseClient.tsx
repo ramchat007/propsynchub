@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Tenant, Room, RoomCategory, ResortActivity, ResortReview } from '@/types';
+import { formatAddress } from '@/lib/utils';
 
 interface ResortShowcaseClientProps {
   tenant: Tenant;
@@ -19,7 +20,7 @@ interface ShowcaseSettings {
   tagline?: string;
   about_description?: string;
   hero_image_url?: string;
-  address?: string;
+  address?: unknown;
   whatsapp_number?: string;
   contact_phone?: string;
   contact_email?: string;
@@ -106,8 +107,7 @@ export default function ResortShowcaseClient({
           'Pet Friendly Estate',
         ];
 
-  const address =
-    settings.address || 'Survey No. 42, Tropical Greens, Raigad District, Maharashtra 402107';
+  const address = formatAddress(settings.address);
   const whatsappNumber = settings.whatsapp_number || tenant.contact_phone || '+919999999999';
   const cleanWhatsApp = whatsappNumber.replace(/\D/g, '');
   const contactPhone = settings.contact_phone || tenant.contact_phone || '+91 99999 99999';

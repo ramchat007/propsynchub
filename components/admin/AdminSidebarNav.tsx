@@ -280,8 +280,9 @@ export default function AdminSidebarNav({
     <>
       {/* DESKTOP FIXED SIDEBAR */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 border-r border-white/10 bg-neutral-950 text-white lg:block">
-        <div className="flex h-full flex-col justify-between">
-          <div>
+        <div className="flex h-full flex-col">
+          {/* Header section (Fixed / shrink-0) */}
+          <div className="shrink-0">
             {/* Resort Branding Header */}
             <div className="flex h-20 items-center gap-3 border-b border-white/10 px-6">
               <span
@@ -331,41 +332,41 @@ export default function AdminSidebarNav({
                 </select>
               </div>
             )}
-
-            {/* Navigation links */}
-            <nav className="space-y-1.5 px-4 py-6">
-              {allowedLinks.map((item) => {
-                const isActive =
-                  item.href === '/settings'
-                    ? pathname === '/settings'
-                    : pathname === item.href ||
-                      (item.href !== '/dashboard' && pathname.startsWith(item.href));
-
-                return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    style={
-                      isActive
-                        ? { backgroundColor: safeBrandColor, color: '#ffffff' }
-                        : undefined
-                    }
-                    className={`flex min-h-[44px] items-center gap-3 rounded-xl px-4 text-xs font-bold transition ${
-                      isActive
-                        ? 'shadow-md'
-                        : 'text-neutral-300 hover:bg-white/10 hover:text-white'
-                    }`}
-                  >
-                    {item.icon}
-                    <span>{item.name}</span>
-                  </Link>
-                );
-              })}
-            </nav>
           </div>
 
-          {/* Footer Actions */}
-          <div className="border-t border-white/10 p-4 space-y-2.5">
+          {/* Navigation links (Scrollable body) */}
+          <nav className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-1.5 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.2)_transparent]">
+            {allowedLinks.map((item) => {
+              const isActive =
+                item.href === '/settings'
+                  ? pathname === '/settings'
+                  : pathname === item.href ||
+                    (item.href !== '/dashboard' && pathname.startsWith(item.href));
+
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  style={
+                    isActive
+                      ? { backgroundColor: safeBrandColor, color: '#ffffff' }
+                      : undefined
+                  }
+                  className={`flex min-h-[44px] items-center gap-3 rounded-xl px-4 text-xs font-bold transition ${
+                    isActive
+                      ? 'shadow-md'
+                      : 'text-neutral-300 hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  {item.icon}
+                  <span>{item.name}</span>
+                </Link>
+              );
+            })}
+          </nav>
+
+          {/* Footer Actions (Pinned to bottom) */}
+          <div className="shrink-0 border-t border-white/10 p-4 space-y-2.5 bg-neutral-950">
             {userRole !== 'staff' && (
               <Link
                 href="/onboarding"
@@ -428,35 +429,62 @@ export default function AdminSidebarNav({
       {/* MOBILE FLYOUT MENU */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs lg:hidden">
-          <div className="flex h-full w-72 flex-col justify-between bg-neutral-950 p-5 text-white">
-            <div>
-              <div className="flex items-center justify-between border-b border-white/10 pb-4">
-                <span className="font-bold text-sm">{safeResortName}</span>
-                <button
-                  type="button"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="text-stone-400 text-lg"
+          <div className="flex h-full max-h-screen w-80 max-w-[85vw] flex-col bg-neutral-950 text-white shadow-2xl">
+            {/* Header (shrink-0) */}
+            <div className="shrink-0 flex items-center justify-between border-b border-white/10 p-4">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-sm font-black text-white"
+                  style={{ backgroundColor: safeBrandColor }}
                 >
-                  ✕
-                </button>
+                  {lettermark}
+                </span>
+                <span className="font-bold text-sm truncate">{safeResortName}</span>
               </div>
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                className="rounded-lg p-1.5 text-stone-400 hover:text-white hover:bg-white/10 text-lg transition"
+                aria-label="Close menu"
+              >
+                ✕
+              </button>
+            </div>
 
-              <nav className="mt-4 space-y-1.5">
-                {allowedLinks.map((item) => (
+            {/* Navigation links (Scrollable area) */}
+            <nav className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 space-y-1.5 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.2)_transparent]">
+              {allowedLinks.map((item) => {
+                const isActive =
+                  item.href === '/settings'
+                    ? pathname === '/settings'
+                    : pathname === item.href ||
+                      (item.href !== '/dashboard' && pathname.startsWith(item.href));
+
+                return (
                   <Link
                     key={item.name}
                     href={item.href}
                     onClick={() => setMobileMenuOpen(false)}
-                    className="flex min-h-[42px] items-center gap-3 rounded-xl px-3 text-xs font-bold text-neutral-200 hover:bg-white/10"
+                    style={
+                      isActive
+                        ? { backgroundColor: safeBrandColor, color: '#ffffff' }
+                        : undefined
+                    }
+                    className={`flex min-h-[42px] items-center gap-3 rounded-xl px-3.5 text-xs font-bold transition ${
+                      isActive
+                        ? 'shadow-md text-white'
+                        : 'text-neutral-300 hover:bg-white/10 hover:text-white'
+                    }`}
                   >
                     {item.icon}
                     <span>{item.name}</span>
                   </Link>
-                ))}
-              </nav>
-            </div>
+                );
+              })}
+            </nav>
 
-            <div className="border-t border-white/10 pt-4 space-y-2">
+            {/* Footer Actions (shrink-0 pinned to bottom) */}
+            <div className="shrink-0 border-t border-white/10 p-4 space-y-2 bg-neutral-950">
               {userRole !== 'staff' && (
                 <Link
                   href="/onboarding"
@@ -471,7 +499,18 @@ export default function AdminSidebarNav({
                   <span>➕ Launch New Resort</span>
                 </Link>
               )}
-              <SignOutButton />
+              <Link
+                href={`/${safeSubdomain}`}
+                target="_blank"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex min-h-[38px] w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 text-xs font-semibold text-neutral-200 transition hover:bg-white/10 hover:text-white"
+              >
+                <span>🌐 View Live Website</span>
+                <span className="text-[10px] text-neutral-400">↗</span>
+              </Link>
+              <div className="pt-1">
+                <SignOutButton />
+              </div>
             </div>
           </div>
         </div>

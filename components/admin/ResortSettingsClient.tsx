@@ -6,6 +6,7 @@ import { Tenant } from '@/types';
 import { updateResortGeneralSettings, UpdateResortGeneralSettingsPayload } from '@/app/actions/tenant';
 import { saveTenantRazorpayKeys } from '@/app/actions/payment';
 import { ToastContainer, ToastMessage } from './Toast';
+import { parseAddressObj } from '@/lib/utils';
 
 interface ResortSettingsClientProps {
   tenant: Tenant;
@@ -34,13 +35,7 @@ export default function ResortSettingsClient({
   }
 
   const settings = (tenant.settings || {}) as Record<string, unknown>;
-  const addressObj = (settings.address || {}) as {
-    street?: string;
-    city?: string;
-    state?: string;
-    postal_code?: string;
-    country?: string;
-  };
+  const addressObj = parseAddressObj(settings.address);
   const entitlements = (settings.module_entitlements || {
     restaurant: true,
     activities: true,
@@ -179,8 +174,8 @@ export default function ResortSettingsClient({
           <h1 className="text-2xl font-black tracking-tight text-neutral-900 dark:text-neutral-100 sm:text-3xl">
             Resort Configuration &amp; Defaults
           </h1>
-          <span className="rounded-full bg-emerald-100 dark:bg-emerald-950 px-2.5 py-0.5 text-xs font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
-            {tenant.subdomain}.propsynchub.com
+          <span className="rounded-full bg-emerald-100 dark:bg-emerald-950 px-2.5 py-0.5 text-xs font-mono font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+            /r/{tenant.subdomain}
           </span>
         </div>
         <p className="mt-1 text-xs text-neutral-500">

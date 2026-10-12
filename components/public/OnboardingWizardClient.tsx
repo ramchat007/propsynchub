@@ -399,6 +399,9 @@ export default function OnboardingWizardClient({
               </label>
 
               <div className="mt-1.5 flex rounded-2xl border border-neutral-300 bg-transparent focus-within:border-neutral-900 dark:border-neutral-700 dark:focus-within:border-white">
+                <span className="flex items-center rounded-l-2xl bg-neutral-100 px-4 text-xs font-mono font-bold text-neutral-500 dark:bg-neutral-800">
+                  /r/
+                </span>
                 <input
                   id="subdomain-input"
                   type="text"
@@ -409,23 +412,20 @@ export default function OnboardingWizardClient({
                     setSubdomainStatus({ checked: false, available: false });
                   }}
                   placeholder="royal-palms"
-                  className="w-full rounded-l-2xl bg-transparent px-4 py-3 text-sm font-mono text-neutral-900 focus:outline-none dark:text-neutral-100"
+                  className="w-full rounded-r-2xl bg-transparent px-4 py-3 text-sm font-mono text-neutral-900 focus:outline-none dark:text-neutral-100"
                 />
-                <span className="flex items-center rounded-r-2xl bg-neutral-100 px-4 text-xs font-bold text-neutral-500 dark:bg-neutral-800">
-                  .propsynchub.com
-                </span>
               </div>
 
               {/* Live URL Preview */}
               <div className="mt-3 rounded-2xl border border-neutral-200 bg-neutral-50 p-4 text-xs dark:border-neutral-800 dark:bg-neutral-800/40">
                 <span className="block text-[11px] font-bold text-neutral-400 uppercase">
-                  Live Public URL Preview
+                  Resort Public URL
                 </span>
                 <p className="mt-1 font-mono text-sm font-black text-indigo-600 dark:text-indigo-400">
-                  https://{subdomain || 'your-resort'}.propsynchub.com
+                  /r/{subdomain || 'your-resort'}
                 </p>
                 <p className="mt-1 text-[11px] text-neutral-400">
-                  Local Dev Equivalent: <code className="font-mono">http://localhost:3000/{subdomain || 'your-resort'}/book</code>
+                  Direct access route for guest bookings and room availability.
                 </p>
               </div>
 
@@ -607,7 +607,7 @@ export default function OnboardingWizardClient({
                 <div className="flex justify-between">
                   <span className="text-neutral-500">Public URL</span>
                   <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                    {subdomain}.propsynchub.com
+                    /r/{subdomain}
                   </span>
                 </div>
 

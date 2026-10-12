@@ -402,7 +402,7 @@ export default function InventoryDashboardClient({
                 rel="noreferrer"
                 className="inline-flex items-center gap-1 font-mono text-neutral-500 hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
               >
-                <span>🌐 {tenant.subdomain}.propsynchub.com</span>
+                <span>🌐 View Website (/{tenant.subdomain})</span>
                 <span>↗</span>
               </a>
             ) : (
